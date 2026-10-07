@@ -104,6 +104,7 @@ server_acl_update(void)
 			c->flags |= CLIENT_READONLY;
 		else
 			c->flags &= ~CLIENT_READONLY;
+		dnd_client_start(c);
 	}
 }
 

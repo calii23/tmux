@@ -5217,6 +5217,16 @@ Allows setting the system clipboard.
 Allows setting the cursor colour.
 .It cstyle
 Allows setting the cursor style.
+.It dnd
+Supports the kitty drag and drop protocol (OSC 72).
+This is detected automatically if the terminal replies to a query when
+.Nm
+starts.
+With this feature, programs in panes may accept drops and start drags:
+drops go to the pane under the pointer and drags start from the pane where
+the drag gesture began.
+Holding a drag over a window in the status line selects that window, see
+.Ic drag\-select\-window .
 .It extkeys
 Supports extended keys.
 .It focus
@@ -5450,6 +5460,18 @@ indicators are displayed.
 If set to 0, messages and indicators are displayed until a key is pressed.
 .Ar time
 is in milliseconds.
+.It Xo Ic drag\-select\-window
+.Op Cm on | off
+.Xc
+If on, holding a drag and drop drag over a window in the status line selects
+that window, like hovering over a tab in a web browser.
+This needs the
+.Ic dnd
+terminal feature and a pane accepting drops.
+.It Ic drag\-select\-window\-time Ar time
+Set the time in milliseconds a drag must be held over a window in the status
+line before it is selected with
+.Ic drag\-select\-window .
 .It Ic history\-limit Ar lines
 Set the maximum number of lines held in pane history.
 .It Ic initial\-repeat\-time Ar time

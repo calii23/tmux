@@ -169,6 +169,7 @@ static void	input_osc_11(struct input_ctx *, const char *);
 static void	input_osc_12(struct input_ctx *, const char *);
 static void	input_osc_52(struct input_ctx *, const char *);
 static void	input_osc_66(struct input_ctx *, const char *);
+static void	input_osc_72(struct input_ctx *, const char *);
 static void	input_osc_104(struct input_ctx *, const char *);
 static void	input_osc_110(struct input_ctx *, const char *);
 static void	input_osc_111(struct input_ctx *, const char *);
@@ -2809,6 +2810,9 @@ input_exit_osc(struct input_ctx *ictx)
 	case 66:
 		input_osc_66(ictx, p);
 		break;
+	case 72:
+		input_osc_72(ictx, p);
+		break;
 	case 104:
 		input_osc_104(ictx, p);
 		break;
@@ -3684,6 +3688,49 @@ input_osc_52(struct input_ctx *ictx, const char *p)
 		events_fire_pane("pane-set-clipboard", wp);
 		paste_add(NULL, out, outlen);
 	}
+}
+
+/* Handle the OSC 72 sequence for the drag and drop protocol. */
+static void
+input_osc_72(struct input_ctx *ictx, const char *p)
+{
+	struct window_pane	*wp = ictx->wp;
+	struct dnd_msg		 msg, reply;
+	const char		*end;
+	char			*s;
+
+	if (wp == NULL)
+		return;
+	if (dnd_parse(&msg, p) != 0) {
+		log_debug("bad OSC 72: %s", p);
+		return;
+	}
+
+	if (ictx->input_end == INPUT_END_BEL)
+		end = "\007";
+	else
+		end = "\033\\";
+
+	if (msg.type != 'q') {
+		dnd_pane_message(wp, &msg);
+		dnd_free(&msg);
+		return;
+	}
+
+	/*
+	 * Only reply to a query if a client can carry the protocol. Without a
+	 * reply the program gets the device attributes reply it sends after
+	 * the query first, which tells it there is no support.
+	 */
+	if (dnd_get_client(wp) != NULL) {
+		memset(&reply, 0, sizeof reply);
+		reply.type = 'q';
+		reply.id = msg.id;
+		s = dnd_build(&reply, end);
+		input_reply(ictx, 1, "%s", s);
+		free(s);
+	}
+	dnd_free(&msg);
 }
 
 /* Handle the OSC 104 sequence for unsetting (multiple) palette entries. */

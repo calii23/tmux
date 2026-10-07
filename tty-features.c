@@ -401,6 +401,13 @@ static const struct tty_feature tty_feature_textsizing_width = {
 	TERM_TEXTSIZINGWIDTH
 };
 
+/* Terminal supports the drag and drop protocol (OSC 72). */
+static const struct tty_feature tty_feature_dnd = {
+	"dnd",
+	NULL,
+	TERM_DND
+};
+
 /* Terminal supports UTF-8. */
 static const struct tty_feature tty_feature_utf8 = {
 	"utf8",
@@ -417,6 +424,7 @@ static const struct tty_feature *const tty_features[] = {
 	&tty_feature_clipboard,
 	&tty_feature_hyperlinks,
 	&tty_feature_cstyle,
+	&tty_feature_dnd,
 	&tty_feature_extkeys,
 	&tty_feature_focus,
 	&tty_feature_ignorefkeys,

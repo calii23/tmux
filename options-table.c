@@ -859,6 +859,25 @@ const struct options_table_entry options_table[] = {
 	  .text = "Time for which status line messages should appear."
 	},
 
+	{ .name = "drag-select-window",
+	  .type = OPTIONS_TABLE_FLAG,
+	  .scope = OPTIONS_TABLE_SESSION,
+	  .default_num = 1,
+	  .text = "Whether holding a drag over a window in the status line "
+		  "selects it."
+	},
+
+	{ .name = "drag-select-window-time",
+	  .type = OPTIONS_TABLE_NUMBER,
+	  .scope = OPTIONS_TABLE_SESSION,
+	  .minimum = 0,
+	  .maximum = INT_MAX,
+	  .default_num = 500,
+	  .unit = "milliseconds",
+	  .text = "Time a drag must be held over a window in the status line "
+		  "before it is selected."
+	},
+
 	{ .name = "focus-follows-mouse",
 	  .type = OPTIONS_TABLE_FLAG,
 	  .scope = OPTIONS_TABLE_SESSION,

@@ -119,6 +119,7 @@ cmd_attach_session(struct cmdq_item *item, const char *tflag, int dflag,
 			}
 		}
 		c->flags |= (CLIENT_READONLY|CLIENT_IGNORESIZE);
+		dnd_client_start(c);
 	}
 
 	c->last_session = c->session;
