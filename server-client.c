@@ -413,6 +413,7 @@ server_client_lost(struct client *c)
 
 	status_free(c);
 	input_cancel_requests(c);
+	dnd_client_free(c);
 
 	free(c->title);
 	free(c->path);
@@ -3194,6 +3195,7 @@ server_client_set_flags(struct client *c, const char *flags)
 			control_reset_offsets(c);
 	}
 	free(copy);
+	dnd_client_start(c);
 	proc_send(c->peer, MSG_FLAGS, -1, &c->flags, sizeof c->flags);
 }
 
