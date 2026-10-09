@@ -303,6 +303,57 @@ enum key_code_mouse_location {
  */
 typedef unsigned long long key_code;
 
+/* Kitty keyboard protocol flags. */
+#define KITTY_KEYS_DISAMBIGUATE 0x1
+#define KITTY_KEYS_EVENT_TYPES 0x2
+#define KITTY_KEYS_ALTERNATE 0x4
+#define KITTY_KEYS_ALL 0x8
+#define KITTY_KEYS_TEXT 0x10
+#define KITTY_KEYS_MASK 0x1f
+
+/* Kitty keyboard protocol modifier bits. */
+#define KITTY_KEYS_MOD_SHIFT 0x1
+#define KITTY_KEYS_MOD_ALT 0x2
+#define KITTY_KEYS_MOD_CTRL 0x4
+#define KITTY_KEYS_MOD_SUPER 0x8
+#define KITTY_KEYS_MOD_HYPER 0x10
+#define KITTY_KEYS_MOD_META 0x20
+#define KITTY_KEYS_MOD_CAPSLOCK 0x40
+#define KITTY_KEYS_MOD_NUMLOCK 0x80
+#define KITTY_KEYS_MOD_LOCKS (KITTY_KEYS_MOD_CAPSLOCK|KITTY_KEYS_MOD_NUMLOCK)
+
+/* Size of kitty keyboard flags stack. */
+#define KITTY_KEYS_STACK 16
+
+/*
+ * Maximum length of a kitty keyboard protocol key sequence, and so of the
+ * associated text codepoints it can hold: each is at least two digits and a
+ * separator, so the text is never cut short.
+ */
+#define KEY_EXTRA_SIZE 1024
+#define KEY_EXTRA_TEXT (KEY_EXTRA_SIZE / 3)
+
+/*
+ * Extra information about a key from the kitty keyboard protocol. This is
+ * present if final is not zero and is used to pass the key on to panes
+ * without losing anything.
+ */
+struct key_extra {
+	int		 type;
+#define KEY_EXTRA_PRESS 1
+#define KEY_EXTRA_REPEAT 2
+#define KEY_EXTRA_RELEASE 3
+
+	char		 final;		/* 'u', '~' or a letter */
+	u_int		 code;		/* number before the first ; */
+	u_int		 shifted;
+	u_int		 base;
+	u_int		 modifiers;	/* kitty modifier bits */
+
+	u_int		 text[KEY_EXTRA_TEXT];
+	u_int		 ntext;
+};
+
 /* C0 control characters */
 enum {
 	C0_NUL,
@@ -420,6 +471,7 @@ enum {
 	KEYC_REPORT_COLOURS,
 	KEYC_REPORT_PALETTE,
 	KEYC_REPORT_WINSZ,
+	KEYC_REPORT_KITTY_KEYS,
 
 	/* Mouse state. */
 	KEYC_MOUSE, /* unclassified mouse event */
@@ -1165,6 +1217,10 @@ struct screen {
 
 	struct hyperlinks		*hyperlinks;
 	struct progress_bar		 progress_bar;
+
+	/* Kitty keyboard flags, for main and alternate screens. */
+	u_int				 kitty_keys[2][KITTY_KEYS_STACK];
+	u_int				 kitty_keys_top[2];
 };
 
 /* Screen write context. */
@@ -1785,6 +1841,7 @@ struct key_event {
 
 	key_code		 key;
 	struct mouse_event	 m;
+	struct key_extra	 extra;
 
 	char			*buf;
 	size_t			 len;
@@ -1811,6 +1868,7 @@ struct tty_term {
 #define TERM_NOREPLACE 0x100
 #define TERM_TEXTSIZING 0x200
 #define TERM_TEXTSIZINGWIDTH 0x400
+#define TERM_KITTYKEYS 0x800
 	int		 flags;
 
 	LIST_ENTRY(tty_term) entry;
@@ -1853,6 +1911,7 @@ struct tty {
 	u_int		 osy;
 
 	int		 mode;
+	u_int		 kitty_keys;
 	int              fg;
 	int              bg;
 
@@ -2402,6 +2461,18 @@ struct client {
 	struct key_table	*keytable;
 	key_code		 last_key;
 	time_t			 paste_time;
+
+	/*
+	 * Keys sent to panes which are still pressed, so the release goes to
+	 * the same pane.
+	 */
+#define CLIENT_KEYS_DOWN 32
+	struct {
+		u_int		 code;
+		char		 final;
+		u_int		 pane;
+	}			 keys_down[CLIENT_KEYS_DOWN];
+	u_int			 nkeys_down;
 
 	int			 message_ignore_keys;
 	int			 message_ignore_styles;
@@ -3025,6 +3096,7 @@ void	tty_set_progress_bar(struct tty *, struct progress_bar *);
 void	tty_default_attributes(struct tty *, u_int,
 	    const struct tty_style_ctx *);
 void	tty_update_mode(struct tty *, int, struct screen *);
+void	tty_update_kitty_keys(struct tty *, u_int);
 const struct grid_cell *tty_check_codeset(struct tty *,
 	    const struct grid_cell *);
 void	tty_sync_start(struct tty *);
@@ -3504,8 +3576,12 @@ void	 input_cancel_requests(struct client *);
 
 /* input-key.c */
 void	 input_key_build(void);
-int	 input_key_pane(struct window_pane *, key_code, struct mouse_event *);
-int	 input_key(struct screen *, struct bufferevent *, key_code);
+int	 input_key_pane(struct window_pane *, key_code, struct mouse_event *,
+	     const struct key_extra *);
+int	 input_key(struct screen *, struct bufferevent *, key_code,
+	     const struct key_extra *);
+int	 input_key_is_passive(const struct key_extra *);
+key_code input_key_kitty_to_key(char, u_int);
 int	 input_key_get_mouse(struct screen *, struct mouse_event *, u_int,
 	     u_int, const char **, size_t *);
 
@@ -3762,6 +3838,11 @@ int	 screen_select_cell(struct screen *, struct grid_cell *,
 	     const struct grid_cell *);
 int	 screen_alternate_on(struct screen *, struct grid_cell *, int);
 int	 screen_alternate_off(struct screen *, struct grid_cell *, int);
+u_int	 screen_kitty_keys(struct screen *);
+void	 screen_kitty_keys_reset(struct screen *, int);
+void	 screen_kitty_keys_push(struct screen *, u_int);
+void	 screen_kitty_keys_pop(struct screen *, u_int);
+void	 screen_kitty_keys_set(struct screen *, u_int, u_int);
 const char *screen_mode_to_string(int);
 const char *screen_print(struct screen *, int);
 
@@ -3849,7 +3930,7 @@ void		 window_pane_reset_mode(struct window_pane *);
 void		 window_pane_reset_mode_all(struct window_pane *);
 int		 window_pane_key(struct window_pane *, struct client *,
 		     struct session *, struct winlink *, key_code,
-		     struct mouse_event *);
+		     struct mouse_event *, const struct key_extra *);
 void		 window_pane_paste(struct window_pane *, key_code, char *,
 		     size_t);
 void		 window_pane_set_prompt(struct window_pane *, struct client *,

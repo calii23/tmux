@@ -2121,7 +2121,8 @@ window_pane_copy_paste(struct window_pane *wp, char *buf, size_t len)
 }
 
 static void
-window_pane_copy_key(struct window_pane *wp, key_code key)
+window_pane_copy_key(struct window_pane *wp, key_code key,
+    const struct key_extra *ke)
 {
 	struct window_pane	*loop;
 
@@ -2132,7 +2133,7 @@ window_pane_copy_key(struct window_pane *wp, key_code key)
 		    (~loop->flags & PANE_INPUTOFF) &&
 		    window_pane_is_visible(loop) &&
 		    options_get_number(loop->options, "synchronize-panes"))
-			input_key_pane(loop, key, NULL);
+			input_key_pane(loop, key, NULL, ke);
 	}
 }
 
@@ -2157,7 +2158,8 @@ window_pane_paste(struct window_pane *wp, key_code key, char *buf, size_t len)
 
 int
 window_pane_key(struct window_pane *wp, struct client *c, struct session *s,
-    struct winlink *wl, key_code key, struct mouse_event *m)
+    struct winlink *wl, key_code key, struct mouse_event *m,
+    const struct key_extra *ke)
 {
 	struct window_mode_entry	*wme;
 
@@ -2166,6 +2168,9 @@ window_pane_key(struct window_pane *wp, struct client *c, struct session *s,
 
 	wme = TAILQ_FIRST(&wp->modes);
 	if (wme != NULL) {
+		/* Modes do not want releases or modifier keys. */
+		if (input_key_is_passive(ke))
+			return (0);
 		/*
 		 * No mode uses mouse motion events, so drop them here rather
 		 * than passing them on and causing a redraw on every movement.
@@ -2182,13 +2187,13 @@ window_pane_key(struct window_pane *wp, struct client *c, struct session *s,
 	if (wp->fd == -1 || wp->flags & PANE_INPUTOFF)
 		return (0);
 
-	if (input_key_pane(wp, key, m) != 0)
+	if (input_key_pane(wp, key, m, ke) != 0)
 		return (-1);
 
 	if (KEYC_IS_MOUSE(key))
 		return (0);
 	if (options_get_number(wp->options, "synchronize-panes"))
-		window_pane_copy_key(wp, key);
+		window_pane_copy_key(wp, key, ke);
 	return (0);
 }
 

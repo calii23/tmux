@@ -95,7 +95,7 @@ cmd_send_keys_inject_key(struct cmdq_item *item, struct cmdq_item *after,
 
 	wme = TAILQ_FIRST(&wp->modes);
 	if (wme == NULL || wme->mode->key_table == NULL) {
-		if (window_pane_key(wp, tc, s, wl, key, NULL) != 0)
+		if (window_pane_key(wp, tc, s, wl, key, NULL, NULL) != 0)
 			return (NULL);
 		return (item);
 	}
@@ -115,6 +115,7 @@ cmd_send_keys_inject_string(struct cmdq_item *item, struct cmdq_item *after,
     struct args *args, int i)
 {
 	const char		*s = args_string(args, i);
+	struct window_pane	*wp;
 	struct utf8_data	*ud, *loop;
 	utf8_char		 uc;
 	key_code		 key;
@@ -142,6 +143,21 @@ cmd_send_keys_inject_string(struct cmdq_item *item, struct cmdq_item *after,
 		literal = 1;
 	}
 	if (literal) {
+		/*
+		 * If the pane is using the kitty keyboard protocol, send text
+		 * as it is rather than as keys.
+		 */
+		wp = cmdq_get_target(item)->wp;
+		if (!args_has(args, 'K') &&
+		    TAILQ_EMPTY(&wp->modes) &&
+		    screen_kitty_keys(wp->screen) != 0) {
+			for (; *s != '\0'; s++) {
+				after = cmd_send_keys_inject_key(item, after,
+				    args, KEYC_LITERAL|(u_char)*s);
+			}
+			return (after);
+		}
+
 		ud = utf8_fromcstr(s);
 		for (loop = ud; loop->size != 0; loop++) {
 			if (loop->size == 1 && loop->data[0] <= 0x7f)
@@ -216,7 +232,7 @@ cmd_send_keys_exec(struct cmd *self, struct cmdq_item *item)
 			cmdq_error(item, "no mouse target");
 			return (CMD_RETURN_ERROR);
 		}
-		window_pane_key(wp, tc, s, wl, m->key, m);
+		window_pane_key(wp, tc, s, wl, m->key, m, NULL);
 		return (CMD_RETURN_NORMAL);
 	}
 

@@ -471,6 +471,13 @@ const struct options_table_entry options_table[] = {
 	  .text = "Number of bytes accepted in a single input before dropping."
 	},
 
+	{ .name = "kitty-keys",
+	  .type = OPTIONS_TABLE_FLAG,
+	  .scope = OPTIONS_TABLE_SERVER,
+	  .default_num = 1,
+	  .text = "Whether applications may use the kitty keyboard protocol."
+	},
+
 	{ .name = "menu-style",
 	  .type = OPTIONS_TABLE_STRING,
 	  .scope = OPTIONS_TABLE_WINDOW,

@@ -259,6 +259,13 @@ static const struct tty_feature tty_feature_extkeys = {
 	0
 };
 
+/* Terminal supports the kitty keyboard protocol. */
+static const struct tty_feature tty_feature_kittykeys = {
+	"kittykeys",
+	NULL,
+	TERM_KITTYKEYS
+};
+
 /* Terminal supports DECSLRM margins. */
 static const char *const tty_feature_margins_capabilities[] = {
 	"Enmg=\\E[?69h",
@@ -413,6 +420,7 @@ static const struct tty_feature *const tty_features[] = {
 	&tty_feature_extkeys,
 	&tty_feature_focus,
 	&tty_feature_ignorefkeys,
+	&tty_feature_kittykeys,
 	&tty_feature_margins,
 	&tty_feature_mouse,
 	&tty_feature_osc7,
@@ -641,6 +649,7 @@ tty_default_features(struct client *c, const char *name, u_int version)
 			      "ccolour,"
 			      "cstyle,"
 			      "extkeys,"
+			      "kittykeys,"
 			      "usstyle,"
 			      "sync,"
 			      "osc7,"
@@ -662,6 +671,7 @@ tty_default_features(struct client *c, const char *name, u_int version)
 			      "cstyle,"
 			      "extkeys,"
 			      "focus,"
+			      "kittykeys,"
 			      "margins,"
 			      "overline,"
 			      "hyperlinks,"
@@ -688,6 +698,7 @@ tty_default_features(struct client *c, const char *name, u_int version)
 			      "cstyle,"
 			      "focus,"
 			      "hyperlinks,"
+			      "kittykeys,"
 			      "overline,"
 			      "sync,"
 			      "usstyle"
