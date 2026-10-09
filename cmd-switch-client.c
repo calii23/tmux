@@ -91,6 +91,7 @@ cmd_switch_client_exec(struct cmd *self, struct cmdq_item *item)
 			tc->flags &= ~(CLIENT_READONLY|CLIENT_IGNORESIZE);
 		else
 			tc->flags |= (CLIENT_READONLY|CLIENT_IGNORESIZE);
+		dnd_client_start(tc);
 	}
 
 	tablename = args_get(args, 'T');

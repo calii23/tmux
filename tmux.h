@@ -57,6 +57,8 @@ struct format_tree;
 struct hyperlinks_uri;
 struct hyperlinks;
 struct input_ctx;
+struct dnd_client;
+struct dnd_pane;
 struct input_request;
 struct input_requests;
 struct job;
@@ -472,6 +474,7 @@ enum {
 	KEYC_REPORT_PALETTE,
 	KEYC_REPORT_WINSZ,
 	KEYC_REPORT_KITTY_KEYS,
+	KEYC_REPORT_DND,
 
 	/* Mouse state. */
 	KEYC_MOUSE, /* unclassified mouse event */
@@ -1371,6 +1374,19 @@ struct input_request_clipboard_data {
 	char	 clip;
 };
 
+/* Drag and drop protocol (OSC 72) message. Keys left out are zero. */
+struct dnd_msg {
+	char	 type;		/* t */
+	int	 more;		/* m */
+	u_int	 id;		/* i */
+	int	 op;		/* o */
+	int	 x;		/* x */
+	int	 y;		/* y */
+	long long X;		/* X */
+	long long Y;		/* Y */
+	char	*payload;
+};
+
 /* Request sent to client on behalf of pane. */
 TAILQ_HEAD(input_requests, input_request);
 
@@ -1500,6 +1516,7 @@ struct window_pane {
 	struct event	 sync_timer;
 
 	struct input_ctx *ictx;
+	struct dnd_pane	*dnd;
 
 	struct grid_cell cached_gc;
 	struct grid_cell cached_active_gc;
@@ -1868,6 +1885,7 @@ struct tty_term {
 #define TERM_TEXTSIZING 0x200
 #define TERM_TEXTSIZINGWIDTH 0x400
 #define TERM_KITTYKEYS 0x800
+#define TERM_DND 0x1000
 	int		 flags;
 
 	LIST_ENTRY(tty_term) entry;
@@ -2386,6 +2404,7 @@ struct client {
 	enum client_theme	 theme;
 
 	struct input_requests	 input_requests;
+	struct dnd_client	*dnd;
 
 #define CLIENT_TERMINAL 0x1
 #define CLIENT_LOGIN 0x2
@@ -3076,6 +3095,7 @@ void	tty_putcode_s(struct tty *, enum tty_code_code, const char *);
 void	tty_putcode_ss(struct tty *, enum tty_code_code, const char *,
 	    const char *);
 void	tty_puts(struct tty *, const char *);
+void	tty_write_noblock(struct tty *, const char *, size_t);
 void	tty_putc(struct tty *, u_char);
 void	tty_putn(struct tty *, const void *, size_t, u_int);
 void	tty_cell(struct tty *, const struct grid_cell *,
@@ -4422,6 +4442,21 @@ struct hyperlinks	*hyperlinks_init(void);
 struct hyperlinks	*hyperlinks_copy(struct hyperlinks *);
 void			 hyperlinks_reset(struct hyperlinks *);
 void			 hyperlinks_free(struct hyperlinks *);
+
+/* dnd.c */
+int			 dnd_parse(struct dnd_msg *, const char *);
+void			 dnd_free(struct dnd_msg *);
+char			*dnd_build(const struct dnd_msg *, const char *);
+struct client		*dnd_get_client(struct window_pane *);
+void			 dnd_client_start(struct client *);
+int			 dnd_client_active(struct client *);
+void			 dnd_client_stop(struct client *);
+void			 dnd_client_free(struct client *);
+void			 dnd_tty_message(struct client *, const char *,
+			     size_t);
+void			 dnd_pane_message(struct window_pane *,
+			     struct dnd_msg *);
+void			 dnd_pane_destroy(struct window_pane *);
 
 /* json.c */
 struct json_node	*json_parse(const char *, char **);

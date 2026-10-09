@@ -420,6 +420,10 @@ tty_send_requests(struct tty *tty)
 			tty_puts(tty, "\033[?2026$p");
 		if (~tty->term->flags & TERM_KITTYKEYS)
 			tty_puts(tty, "\033[?u");
+		if (~tty->term->flags & TERM_DND)
+			tty_puts(tty, "\033]72;t=q\033\\");
+		else
+			dnd_client_start(tty->client);
 		tty_puts(tty, "\033]10;?\033\\\033]11;?\033\\");
 		tty->flags |= (TTY_WAITBG|TTY_WAITFG);
 	} else
@@ -487,6 +491,7 @@ tty_stop_tty(struct tty *tty)
 		tty_raw(tty, tty_term_string(tty->term, TTYC_RMACS));
 	tty_raw(tty, tty_term_string(tty->term, TTYC_SGR0));
 	tty_raw(tty, tty_term_string(tty->term, TTYC_RMKX));
+	dnd_client_stop(c);
 	if (options_get_number(global_options, "clear-on-attach"))
 		tty_raw(tty, tty_term_string(tty->term, TTYC_CLEAR));
 	if (tty->cstyle != SCREEN_CURSOR_DEFAULT) {
@@ -670,6 +675,21 @@ tty_puts(struct tty *tty, const char *s)
 {
 	if (*s != '\0')
 		tty_add(tty, s, strlen(s));
+}
+
+/*
+ * Write data which must not be discarded if the terminal is not keeping up,
+ * such as drag and drop data.
+ */
+void
+tty_write_noblock(struct tty *tty, const char *buf, size_t len)
+{
+	int	blocked = tty->flags & TTY_BLOCK;
+
+	tty->flags &= ~TTY_BLOCK;
+	tty->flags |= TTY_NOBLOCK;
+	tty_add(tty, buf, len);
+	tty->flags |= blocked;
 }
 
 void
