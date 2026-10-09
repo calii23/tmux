@@ -200,6 +200,7 @@ static void	input_csi_dispatch_sm(struct input_ctx *);
 static void	input_csi_dispatch_sm_private(struct input_ctx *);
 static void	input_csi_dispatch_sm_graphics(struct input_ctx *);
 static void	input_csi_dispatch_winops(struct input_ctx *);
+static void	input_csi_dispatch_kitty_keys(struct input_ctx *, int);
 static void	input_csi_dispatch_sgr_256(struct input_ctx *, int, u_int *);
 static void	input_csi_dispatch_sgr_rgb(struct input_ctx *, int, u_int *);
 static void	input_csi_dispatch_sgr(struct input_ctx *);
@@ -279,6 +280,10 @@ enum input_csi_type {
 	INPUT_CSI_HPA,
 	INPUT_CSI_ICH,
 	INPUT_CSI_IL,
+	INPUT_CSI_KITTY_POP,
+	INPUT_CSI_KITTY_PUSH,
+	INPUT_CSI_KITTY_QUERY,
+	INPUT_CSI_KITTY_SET,
 	INPUT_CSI_MODOFF,
 	INPUT_CSI_MODSET,
 	INPUT_CSI_QUERY,
@@ -344,7 +349,11 @@ static const struct input_table_entry input_csi_table[] = {
 	{ 'r', "",  INPUT_CSI_DECSTBM },
 	{ 's', "",  INPUT_CSI_SCP },
 	{ 't', "",  INPUT_CSI_WINOPS },
-	{ 'u', "",  INPUT_CSI_RCP }
+	{ 'u', "",  INPUT_CSI_RCP },
+	{ 'u', "<", INPUT_CSI_KITTY_POP },
+	{ 'u', "=", INPUT_CSI_KITTY_SET },
+	{ 'u', ">", INPUT_CSI_KITTY_PUSH },
+	{ 'u', "?", INPUT_CSI_KITTY_QUERY }
 };
 
 /* Input transition. */
@@ -1559,6 +1568,12 @@ input_csi_dispatch(struct input_ctx *ictx)
 	case INPUT_CSI_WINOPS:
 		input_csi_dispatch_winops(ictx);
 		break;
+	case INPUT_CSI_KITTY_PUSH:
+	case INPUT_CSI_KITTY_POP:
+	case INPUT_CSI_KITTY_SET:
+	case INPUT_CSI_KITTY_QUERY:
+		input_csi_dispatch_kitty_keys(ictx, entry->type);
+		break;
 	case INPUT_CSI_CUU:
 		n = input_get(ictx, 0, 1, 1);
 		if (n != -1)
@@ -2116,6 +2131,41 @@ input_csi_dispatch_sm_graphics(__unused struct input_ctx *ictx)
 	} else
 		input_reply(ictx, 1, "\033[?%d;3;%dS", n, o);
 #endif
+}
+
+/* Handle CSI kitty keyboard protocol sequences. */
+static void
+input_csi_dispatch_kitty_keys(struct input_ctx *ictx, int type)
+{
+	struct screen_write_ctx	*sctx = &ictx->ctx;
+	struct screen		*s = sctx->s;
+	int			 n, m;
+
+	if (!options_get_number(global_options, "kitty-keys"))
+		return;
+
+	switch (type) {
+	case INPUT_CSI_KITTY_PUSH:
+		n = input_get(ictx, 0, 0, 0);
+		if (n != -1)
+			screen_kitty_keys_push(s, n);
+		break;
+	case INPUT_CSI_KITTY_POP:
+		n = input_get(ictx, 0, 1, 1);
+		if (n != -1)
+			screen_kitty_keys_pop(s, n);
+		break;
+	case INPUT_CSI_KITTY_SET:
+		n = input_get(ictx, 0, 0, 0);
+		m = input_get(ictx, 1, 1, 1);
+		if (n != -1 && m != -1)
+			screen_kitty_keys_set(s, n, m);
+		break;
+	case INPUT_CSI_KITTY_QUERY:
+		input_reply(ictx, 1, "\033[?%uu", screen_kitty_keys(s));
+		return;
+	}
+	log_debug("%s: kitty keys now %u", __func__, screen_kitty_keys(s));
 }
 
 /* Handle CSI window operations. */

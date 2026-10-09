@@ -314,6 +314,87 @@ static struct input_key_entry input_key_defaults[] = {
 	  .data = "\033[3;_~"
 	},
 };
+
+/*
+ * Kitty keyboard protocol keys with an equivalent tmux key. The first entry
+ * for a tmux key is the one used to send it to applications.
+ */
+static const struct {
+	char		final;
+	u_int		code;
+	key_code	key;
+} input_key_kitty_table[] = {
+	{ 'u', 27, '\033' },
+	{ 'u', 13, '\r' },
+	{ 'u', 9, '\t' },
+	{ 'u', 127, KEYC_BSPACE },
+	{ '~', 2, KEYC_IC },
+	{ '~', 3, KEYC_DC },
+	{ 'D', 1, KEYC_LEFT },
+	{ 'C', 1, KEYC_RIGHT },
+	{ 'A', 1, KEYC_UP },
+	{ 'B', 1, KEYC_DOWN },
+	{ '~', 5, KEYC_PPAGE },
+	{ '~', 6, KEYC_NPAGE },
+	{ 'H', 1, KEYC_HOME },
+	{ '~', 7, KEYC_HOME },
+	{ 'F', 1, KEYC_END },
+	{ '~', 8, KEYC_END },
+	{ 'P', 1, KEYC_F1 },
+	{ '~', 11, KEYC_F1 },
+	{ 'Q', 1, KEYC_F2 },
+	{ '~', 12, KEYC_F2 },
+	{ '~', 13, KEYC_F3 },
+	{ 'S', 1, KEYC_F4 },
+	{ '~', 14, KEYC_F4 },
+	{ '~', 15, KEYC_F5 },
+	{ '~', 17, KEYC_F6 },
+	{ '~', 18, KEYC_F7 },
+	{ '~', 19, KEYC_F8 },
+	{ '~', 20, KEYC_F9 },
+	{ '~', 21, KEYC_F10 },
+	{ '~', 23, KEYC_F11 },
+	{ '~', 24, KEYC_F12 },
+	{ 'u', 57399, KEYC_KP_ZERO },
+	{ 'u', 57400, KEYC_KP_ONE },
+	{ 'u', 57401, KEYC_KP_TWO },
+	{ 'u', 57402, KEYC_KP_THREE },
+	{ 'u', 57403, KEYC_KP_FOUR },
+	{ 'u', 57404, KEYC_KP_FIVE },
+	{ 'u', 57405, KEYC_KP_SIX },
+	{ 'u', 57406, KEYC_KP_SEVEN },
+	{ 'u', 57407, KEYC_KP_EIGHT },
+	{ 'u', 57408, KEYC_KP_NINE },
+	{ 'u', 57409, KEYC_KP_PERIOD },
+	{ 'u', 57410, KEYC_KP_SLASH },
+	{ 'u', 57411, KEYC_KP_STAR },
+	{ 'u', 57412, KEYC_KP_MINUS },
+	{ 'u', 57413, KEYC_KP_PLUS },
+	{ 'u', 57414, KEYC_KP_ENTER },
+	{ 'u', 57417, KEYC_LEFT },
+	{ 'u', 57418, KEYC_RIGHT },
+	{ 'u', 57419, KEYC_UP },
+	{ 'u', 57420, KEYC_DOWN },
+	{ 'u', 57421, KEYC_PPAGE },
+	{ 'u', 57422, KEYC_NPAGE },
+	{ 'u', 57423, KEYC_HOME },
+	{ 'u', 57424, KEYC_END },
+	{ 'u', 57425, KEYC_IC },
+	{ 'u', 57426, KEYC_DC },
+	{ 'E', 1, KEYC_KP_FIVE },
+	{ '~', 57427, KEYC_KP_FIVE }
+};
+
+/* Kitty keyboard protocol private use area keys. */
+#define INPUT_KEY_KITTY_PUA_START 57344
+#define INPUT_KEY_KITTY_PUA_END 63743
+
+/* Kitty keyboard protocol lock and modifier keys. */
+#define INPUT_KEY_KITTY_LOCKS_START 57358	/* CAPS_LOCK */
+#define INPUT_KEY_KITTY_LOCKS_END 57360		/* NUM_LOCK */
+#define INPUT_KEY_KITTY_MODIFIERS_START 57441	/* LEFT_SHIFT */
+#define INPUT_KEY_KITTY_MODIFIERS_END 57454	/* ISO_LEVEL5_SHIFT */
+
 static const key_code input_key_modifiers[] = {
 	0,
 	0,
@@ -395,7 +476,8 @@ input_key_build(void)
 
 /* Translate a key code into an output key sequence for a pane. */
 int
-input_key_pane(struct window_pane *wp, key_code key, struct mouse_event *m)
+input_key_pane(struct window_pane *wp, key_code key, struct mouse_event *m,
+    const struct key_extra *ke)
 {
 	if (log_get_level() != 0) {
 		log_debug("writing key 0x%llx (%s) to %%%u", key,
@@ -407,7 +489,7 @@ input_key_pane(struct window_pane *wp, key_code key, struct mouse_event *m)
 			input_key_mouse(wp, m);
 		return (0);
 	}
-	return (input_key(wp->screen, wp->event, key));
+	return (input_key(wp->screen, wp->event, key, ke));
 }
 
 static void
@@ -569,13 +651,266 @@ input_key_mode1(struct bufferevent *bev, key_code key)
 	return (-1);
 }
 
+/*
+ * Look up a kitty keyboard protocol key. Returns KEYC_NONE if this is a text
+ * key and KEYC_UNKNOWN if the key is not valid.
+ */
+key_code
+input_key_kitty_to_key(char final, u_int code)
+{
+	u_int	i;
+
+	for (i = 0; i < nitems(input_key_kitty_table); i++) {
+		if (input_key_kitty_table[i].final == final &&
+		    input_key_kitty_table[i].code == code)
+			return (input_key_kitty_table[i].key);
+	}
+	if (final == 'u')
+		return (KEYC_NONE);
+	return (KEYC_UNKNOWN);
+}
+
+/*
+ * Is this a key that has no meaning without the kitty keyboard protocol: a
+ * release or a lock or modifier key alone? These never go through the key
+ * tables.
+ */
+int
+input_key_is_passive(const struct key_extra *ke)
+{
+	if (ke == NULL || ke->final == '\0')
+		return (0);
+	if (ke->type == KEY_EXTRA_RELEASE)
+		return (1);
+	if (ke->final != 'u')
+		return (0);
+	if (ke->code >= INPUT_KEY_KITTY_LOCKS_START &&
+	    ke->code <= INPUT_KEY_KITTY_LOCKS_END)
+		return (1);
+	if (ke->code >= INPUT_KEY_KITTY_MODIFIERS_START &&
+	    ke->code <= INPUT_KEY_KITTY_MODIFIERS_END)
+		return (1);
+	return (0);
+}
+
+/*
+ * Work out the kitty keyboard protocol form of a key which did not come from
+ * the protocol, for example from a terminal without it or from send-keys.
+ */
+static int
+input_key_kitty_from_key(key_code key, struct key_extra *ke)
+{
+	key_code		 onlykey = key & KEYC_MASK_KEY;
+	struct utf8_data	 ud;
+	wchar_t			 wc;
+	u_int			 i;
+
+	memset(ke, 0, sizeof *ke);
+	ke->type = KEY_EXTRA_PRESS;
+	if (key & KEYC_SHIFT)
+		ke->modifiers |= KITTY_KEYS_MOD_SHIFT;
+	if (key & KEYC_META)
+		ke->modifiers |= KITTY_KEYS_MOD_ALT;
+	if (key & KEYC_CTRL)
+		ke->modifiers |= KITTY_KEYS_MOD_CTRL;
+
+	if (onlykey == KEYC_BTAB) {
+		onlykey = '\t';
+		ke->modifiers |= KITTY_KEYS_MOD_SHIFT;
+	}
+	for (i = 0; i < nitems(input_key_kitty_table); i++) {
+		if (input_key_kitty_table[i].key == onlykey) {
+			ke->final = input_key_kitty_table[i].final;
+			ke->code = input_key_kitty_table[i].code;
+			return (0);
+		}
+	}
+	if (KEYC_IS_USER(key) || KEYC_IS_SPECIAL(key) || KEYC_IS_MOUSE(key))
+		return (-1);
+
+	ke->final = 'u';
+	if (KEYC_IS_UNICODE(key)) {
+		utf8_to_data(onlykey, &ud);
+		if (utf8_towc(&ud, &wc) != UTF8_DONE)
+			return (-1);
+		ke->code = wc;
+	} else if (onlykey < 0x20) {
+		/* A C0 control code is a Ctrl key. */
+		if (onlykey == 0)
+			ke->code = ' ';
+		else
+			ke->code = onlykey|0x60;
+		ke->modifiers |= KITTY_KEYS_MOD_CTRL;
+	} else
+		ke->code = onlykey;
+
+	/* The key code is always the unshifted key. */
+	if (ke->code >= 'A' && ke->code <= 'Z') {
+		ke->shifted = ke->code;
+		ke->code += 0x20;
+		ke->modifiers |= KITTY_KEYS_MOD_SHIFT;
+	} else if (ke->code >= 'a' && ke->code <= 'z' &&
+	    (ke->modifiers & KITTY_KEYS_MOD_SHIFT))
+		ke->shifted = ke->code - 0x20;
+
+	/* Keys without Ctrl or Alt type some text. */
+	if (ke->code >= 0x20 && ke->code != 0x7f &&
+	    (ke->modifiers & (KITTY_KEYS_MOD_CTRL|KITTY_KEYS_MOD_ALT)) == 0) {
+		if (ke->shifted != 0)
+			ke->text[0] = ke->shifted;
+		else
+			ke->text[0] = ke->code;
+		ke->ntext = 1;
+	}
+	return (0);
+}
+
+/*
+ * Output a key with the kitty keyboard protocol. Returns 0 if the key has
+ * been handled, 1 if it should be sent as a normal key and -1 if it is not
+ * a key the protocol can send.
+ */
+static int
+input_key_kitty(struct bufferevent *bev, key_code key,
+    const struct key_extra *ke, u_int flags)
+{
+	struct key_extra	 tmp;
+	char			 buf[KEY_EXTRA_SIZE * 4];
+	size_t			 len;
+	u_int			 code, modifiers, i;
+	int			 type, functional, events, alternate, text;
+
+	if (ke == NULL) {
+		if (input_key_kitty_from_key(key, &tmp) != 0)
+			return (-1);
+		ke = &tmp;
+	}
+	code = ke->code;
+	modifiers = ke->modifiers;
+
+	/* Without event types, repeats are presses and releases are not sent. */
+	type = ke->type;
+	if (type == 0)
+		type = KEY_EXTRA_PRESS;
+	if (~flags & KITTY_KEYS_EVENT_TYPES) {
+		if (type == KEY_EXTRA_RELEASE)
+			return (0);
+		type = KEY_EXTRA_PRESS;
+	}
+
+	functional = (ke->final != 'u' ||
+	    code == 27 ||
+	    code == 13 ||
+	    code == 9 ||
+	    code == 127 ||
+	    (code >= INPUT_KEY_KITTY_PUA_START &&
+	    code <= INPUT_KEY_KITTY_PUA_END));
+
+	if (~flags & KITTY_KEYS_ALL) {
+		/* Lock and modifier keys are only reported with all keys. */
+		if (ke->final == 'u' &&
+		    ((code >= INPUT_KEY_KITTY_LOCKS_START &&
+		    code <= INPUT_KEY_KITTY_LOCKS_END) ||
+		    (code >= INPUT_KEY_KITTY_MODIFIERS_START &&
+		    code <= INPUT_KEY_KITTY_MODIFIERS_END)))
+			return (0);
+
+		/*
+		 * Enter, Tab and Backspace without modifiers are sent as
+		 * normal and have no release.
+		 */
+		if (ke->final == 'u' &&
+		    (code == 13 || code == 9 || code == 127) &&
+		    (modifiers & ~KITTY_KEYS_MOD_LOCKS) == 0) {
+			if (type == KEY_EXTRA_RELEASE)
+				return (0);
+			return (1);
+		}
+
+		/*
+		 * Text keys don't report locks. With no modifiers except Shift
+		 * they produce text, which is sent as normal and has no
+		 * release.
+		 */
+		if (!functional) {
+			modifiers &= ~KITTY_KEYS_MOD_LOCKS;
+			if (code == 0 ||
+			    (modifiers & ~KITTY_KEYS_MOD_SHIFT) == 0) {
+				if (type == KEY_EXTRA_RELEASE)
+					return (0);
+				return (1);
+			}
+		}
+
+		/*
+		 * Without disambiguation, presses are sent as normal and only
+		 * repeats and releases need the protocol for the event type.
+		 */
+		if ((~flags & KITTY_KEYS_DISAMBIGUATE) &&
+		    type == KEY_EXTRA_PRESS)
+			return (1);
+	} else if (code == 0 && (~flags & KITTY_KEYS_TEXT))
+		return (0);
+
+	events = (type != KEY_EXTRA_PRESS);
+	alternate = ((flags & KITTY_KEYS_ALTERNATE) &&
+	    ke->final == 'u' &&
+	    ((ke->shifted != 0 && (modifiers & KITTY_KEYS_MOD_SHIFT)) ||
+	    ke->base != 0));
+	text = ((flags & KITTY_KEYS_ALL) &&
+	    (flags & KITTY_KEYS_TEXT) &&
+	    ke->final == 'u' &&
+	    type != KEY_EXTRA_RELEASE &&
+	    ke->ntext != 0);
+
+	/* The 1 of the letter forms is left out if nothing follows it. */
+	len = xsnprintf(buf, sizeof buf, "\033[");
+	if (ke->final == 'u' || code != 1 || modifiers != 0 || events)
+		len += xsnprintf(buf + len, sizeof buf - len, "%u", code);
+	if (alternate) {
+		len += xsnprintf(buf + len, sizeof buf - len, ":");
+		if (ke->shifted != 0 && (modifiers & KITTY_KEYS_MOD_SHIFT)) {
+			len += xsnprintf(buf + len, sizeof buf - len, "%u",
+			    ke->shifted);
+		}
+		if (ke->base != 0) {
+			len += xsnprintf(buf + len, sizeof buf - len, ":%u",
+			    ke->base);
+		}
+	}
+	if (modifiers != 0 || events || text) {
+		len += xsnprintf(buf + len, sizeof buf - len, ";");
+		if (modifiers != 0 || events) {
+			len += xsnprintf(buf + len, sizeof buf - len, "%u",
+			    modifiers + 1);
+		}
+		if (events) {
+			len += xsnprintf(buf + len, sizeof buf - len, ":%d",
+			    type);
+		}
+	}
+	if (text) {
+		for (i = 0; i < ke->ntext; i++) {
+			len += xsnprintf(buf + len, sizeof buf - len, "%c%u",
+			    i == 0 ? ';' : ':', ke->text[i]);
+		}
+	}
+	len += xsnprintf(buf + len, sizeof buf - len, "%c", ke->final);
+
+	input_key_write(__func__, bev, buf, len);
+	return (0);
+}
+
 /* Translate a key code into an output key sequence. */
 int
-input_key(struct screen *s, struct bufferevent *bev, key_code key)
+input_key(struct screen *s, struct bufferevent *bev, key_code key,
+    const struct key_extra *ke)
 {
 	struct input_key_entry	*ike = NULL;
 	key_code		 newkey;
 	struct utf8_data	 ud;
+	utf8_char		 uc;
+	u_int			 flags, i;
 
 	/* Mouse keys need a pane. */
 	if (KEYC_IS_MOUSE(key))
@@ -586,6 +921,67 @@ input_key(struct screen *s, struct bufferevent *bev, key_code key)
 		ud.data[0] = (u_char)key;
 		input_key_write(__func__, bev, &ud.data[0], 1);
 		return (0);
+	}
+
+	/* Use the kitty keyboard protocol if the application asked for it. */
+	if (ke != NULL && ke->final == '\0')
+		ke = NULL;
+	flags = screen_kitty_keys(s);
+	if (flags != 0) {
+		switch (input_key_kitty(bev, key, ke, flags)) {
+		case 0:
+			return (0);
+		case 1:
+			break;
+		default:
+			ke = NULL;
+			break;
+		}
+	}
+
+	/*
+	 * Without the kitty keyboard protocol there are no releases or
+	 * keys for modifiers alone, and other keys tmux does not know have
+	 * no legacy encoding. If the key typed some text and has no Ctrl or
+	 * Meta, the text is the best thing to send.
+	 */
+	if (ke != NULL) {
+		if (input_key_is_passive(ke))
+			return (0);
+		if (ke->final == 'u' &&
+		    ke->code >= INPUT_KEY_KITTY_PUA_START &&
+		    ke->code <= INPUT_KEY_KITTY_PUA_END &&
+		    !KEYC_IS_SPECIAL(key)) {
+			if (ke->ntext == 0)
+				return (0);
+		}
+		if (ke->ntext != 0 && (key & (KEYC_CTRL|KEYC_META)) == 0) {
+			for (i = 0; i < ke->ntext; i++) {
+				if (utf8_fromwc(ke->text[i], &ud) == UTF8_DONE)
+					input_key_write(__func__, bev, ud.data,
+					    ud.size);
+			}
+			return (0);
+		}
+
+		/* Use the shifted key in place of Shift. */
+		if (ke->final == 'u' &&
+		    (key & KEYC_SHIFT) &&
+		    !KEYC_IS_SPECIAL(key) &&
+		    ke->shifted >= 0x20 &&
+		    ke->shifted != 0x7f) {
+			if (ke->shifted < 0x7f)
+				newkey = ke->shifted;
+			else if (utf8_fromwc(ke->shifted, &ud) != UTF8_DONE ||
+			    utf8_from_data(&ud, &uc) != UTF8_DONE)
+				newkey = KEYC_NONE;
+			else
+				newkey = uc;
+			if (newkey != KEYC_NONE) {
+				key = newkey|(key & ~KEYC_MASK_KEY);
+				key &= ~KEYC_SHIFT;
+			}
+		}
 	}
 
 	/* Is this backspace? */

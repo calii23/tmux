@@ -5012,6 +5012,35 @@ will write command prompt history on exit and load it from on start.
 .It Ic input\-buffer\-size Ar bytes
 Maximum of bytes allowed to read in escape and control sequences.
 Once reached, the sequence will be discarded.
+.It Xo Ic kitty\-keys
+.Op Cm on | off
+.Xc
+If enabled, programs inside panes may use the kitty keyboard protocol.
+Programs push, pop, set and query the protocol flags as described at
+.Lk https://sw.kovidgoyal.net/kitty/keyboard\-protocol/ ,
+with separate flags for the main and alternate screens, and keys sent to the
+pane are encoded as the flags ask.
+This includes key release and repeat events, alternate keys, modifier keys on
+their own and the text associated with a key.
+.Pp
+If the terminal supports the protocol (see the
+.Ic kittykeys
+feature for the
+.Ic terminal\-features
+option),
+.Nm
+turns it on in the terminal while the active pane uses it, so that keys can be
+passed on without losing anything.
+Key releases and modifier keys on their own are never looked up in key tables:
+a release goes to the pane that received the key press and a modifier key goes
+to the active pane.
+Text sent with
+.Ic send\-keys
+.Fl l
+to a pane using the protocol is written as it is rather than as keys.
+The current flags are shown by the
+.Ic pane_key_mode
+variable.
 .It Ic message\-limit Ar number
 Set the number of error or information messages to save in the message log for
 each client.
@@ -5116,6 +5145,10 @@ Ignore function keys from
 and use the
 .Nm
 internal set only.
+.It kittykeys
+Supports the kitty keyboard protocol.
+This is detected automatically if the terminal answers a query for the
+protocol flags.
 .It margins
 Supports DECSLRM margins.
 .It mouse
@@ -7463,7 +7496,7 @@ The following variables are available, where appropriate:
 .It Li "pane_in_mode" Ta "" Ta "Number of modes pane is in"
 .It Li "pane_index" Ta "#P" Ta "Index of pane"
 .It Li "pane_input_off" Ta "" Ta "1 if input to pane is disabled"
-.It Li "pane_key_mode" Ta "" Ta "Extended key reporting mode in this pane"
+.It Li "pane_key_mode" Ta "" Ta "Extended key or kitty keyboard mode in this pane"
 .It Li "pane_last" Ta "" Ta "1 if last pane"
 .It Li "pane_last_output_time" Ta "" Ta "Time pane last produced output"
 .It Li "pane_last_prompt_time" Ta "" Ta "Time most recent OSC 133 prompt began"

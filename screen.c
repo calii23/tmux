@@ -121,6 +121,8 @@ screen_reinit(struct screen *s, int check)
 
 	if (SCREEN_IS_ALTERNATE(s))
 		screen_alternate_off(s, NULL, 0);
+	screen_kitty_keys_reset(s, 0);
+	screen_kitty_keys_reset(s, 1);
 	s->saved_cx = UINT_MAX;
 	s->saved_cy = UINT_MAX;
 
@@ -720,6 +722,8 @@ screen_alternate_on(struct screen *s, struct grid_cell *gc, int cursor)
 	s->saved_flags = s->grid->flags;
 	s->grid->flags &= ~GRID_HISTORY;
 
+	screen_kitty_keys_reset(s, 1);
+
 	return 1;
 }
 
@@ -781,12 +785,87 @@ screen_alternate_off(struct screen *s, struct grid_cell *gc, int cursor)
 	    im->list = &s->images;
 #endif
 
+	screen_kitty_keys_reset(s, 1);
+
 	if (s->cx > screen_size_x(s) - 1)
 		s->cx = screen_size_x(s) - 1;
 	if (s->cy > screen_size_y(s) - 1)
 		s->cy = screen_size_y(s) - 1;
 
 	return 1;
+}
+
+/*
+ * Get the current kitty keyboard flags. The main and alternate screens each
+ * have their own stack, the top entry is the current flags.
+ */
+u_int
+screen_kitty_keys(struct screen *s)
+{
+	int	alt = SCREEN_IS_ALTERNATE(s);
+
+	return (s->kitty_keys[alt][s->kitty_keys_top[alt]]);
+}
+
+/* Reset kitty keyboard flags stack for main or alternate screen. */
+void
+screen_kitty_keys_reset(struct screen *s, int alt)
+{
+	memset(s->kitty_keys[alt], 0, sizeof s->kitty_keys[alt]);
+	s->kitty_keys_top[alt] = 0;
+}
+
+/* Push kitty keyboard flags. If the stack is full, drop the oldest entry. */
+void
+screen_kitty_keys_push(struct screen *s, u_int flags)
+{
+	int	 alt = SCREEN_IS_ALTERNATE(s);
+	u_int	*stack = s->kitty_keys[alt], *top = &s->kitty_keys_top[alt];
+
+	if (*top == KITTY_KEYS_STACK - 1)
+		memmove(stack, stack + 1, (KITTY_KEYS_STACK - 1) * sizeof *stack);
+	else
+		(*top)++;
+	stack[*top] = flags & KITTY_KEYS_MASK;
+}
+
+/* Pop kitty keyboard flags. Popping everything resets the flags. */
+void
+screen_kitty_keys_pop(struct screen *s, u_int n)
+{
+	int	 alt = SCREEN_IS_ALTERNATE(s);
+	u_int	*stack = s->kitty_keys[alt], *top = &s->kitty_keys_top[alt];
+
+	if (n > *top) {
+		screen_kitty_keys_reset(s, alt);
+		return;
+	}
+	while (n-- > 0)
+		stack[(*top)--] = 0;
+}
+
+/*
+ * Set kitty keyboard flags. Mode 1 replaces the flags, 2 sets the given bits
+ * and 3 clears them.
+ */
+void
+screen_kitty_keys_set(struct screen *s, u_int flags, u_int mode)
+{
+	int	 alt = SCREEN_IS_ALTERNATE(s);
+	u_int	*current = &s->kitty_keys[alt][s->kitty_keys_top[alt]];
+
+	flags &= KITTY_KEYS_MASK;
+	switch (mode) {
+	case 1:
+		*current = flags;
+		break;
+	case 2:
+		*current |= flags;
+		break;
+	case 3:
+		*current &= ~flags;
+		break;
+	}
 }
 
 /* Get mode as a string. */
