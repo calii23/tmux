@@ -399,6 +399,8 @@ tty_start_tty(struct tty *tty)
 	tty->mouse_drag_flag = 0;
 	tty->mouse_drag_update = NULL;
 	tty->mouse_drag_release = NULL;
+
+	tty->kitty_keys = 0;
 }
 
 void
@@ -416,6 +418,8 @@ tty_send_requests(struct tty *tty)
 			tty_puts(tty, "\033[>q");
 		if (~tty->flags & TTY_HAVESYNC)
 			tty_puts(tty, "\033[?2026$p");
+		if (~tty->term->flags & TERM_KITTYKEYS)
+			tty_puts(tty, "\033[?u");
 		tty_puts(tty, "\033]10;?\033\\\033]11;?\033\\");
 		tty->flags |= (TTY_WAITBG|TTY_WAITFG);
 	} else
@@ -505,6 +509,10 @@ tty_stop_tty(struct tty *tty)
 	tty_raw(tty, tty_term_string(tty->term, TTYC_DSESC));
 	tty_raw(tty, tty_term_string(tty->term, TTYC_DSFCS));
 	tty_raw(tty, tty_term_string(tty->term, TTYC_DSEKS));
+	if (tty->kitty_keys != 0) {
+		tty_raw(tty, "\033[<u");
+		tty->kitty_keys = 0;
+	}
 
 	if (tty_use_margin(tty))
 		tty_raw(tty, tty_term_string(tty->term, TTYC_DSMG));
@@ -915,6 +923,33 @@ tty_update_mode(struct tty *tty, int mode, struct screen *s)
 			tty_puts(tty, "\033[?1000h");
 	}
 	tty->mode = mode;
+}
+
+/*
+ * Set the kitty keyboard flags on the terminal. The first change pushes onto
+ * the terminal's stack and returning to zero pops it, so the terminal is left
+ * as it was found.
+ */
+void
+tty_update_kitty_keys(struct tty *tty, u_int flags)
+{
+	struct client	*c = tty->client;
+	char		 tmp[32];
+
+	if (~tty->term->flags & TERM_KITTYKEYS)
+		flags = 0;
+	if (flags == tty->kitty_keys)
+		return;
+	log_debug("%s: kitty keys %u -> %u", c->name, tty->kitty_keys, flags);
+
+	if (tty->kitty_keys == 0)
+		xsnprintf(tmp, sizeof tmp, "\033[>%uu", flags);
+	else if (flags == 0)
+		xsnprintf(tmp, sizeof tmp, "\033[<u");
+	else
+		xsnprintf(tmp, sizeof tmp, "\033[=%u;1u", flags);
+	tty_puts(tty, tmp);
+	tty->kitty_keys = flags;
 }
 
 static void

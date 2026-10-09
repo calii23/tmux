@@ -47,6 +47,8 @@ struct tty_key_parse {
 	size_t			 size;
 	struct mouse_event	 m;
 
+	struct key_extra	 extra;
+
 	int			 flags;
 #define TTY_KEY_PARSE_NO_META 0x1
 };
@@ -61,6 +63,8 @@ static struct tty_key *tty_keys_find(struct tty *, const char *, size_t,
 static void	tty_keys_callback(int, short, void *);
 static int	tty_keys_extended_key(struct tty *, const char *, size_t,
 		    size_t *, key_code *);
+static int	tty_keys_kitty_key(struct tty *, const char *, size_t,
+		    size_t *, key_code *, struct key_extra *);
 static int	tty_keys_mouse(struct tty *, const char *, size_t, size_t *,
 		    struct mouse_event *);
 static int	tty_keys_clipboard(struct tty *, const char *, size_t,
@@ -79,6 +83,8 @@ static int	tty_keys_palette(struct tty *, const char *, size_t, size_t *,
 		    int);
 static int	tty_keys_winsz(struct tty *, const char *, size_t, size_t *,
 		    int);
+static int	tty_keys_kitty_keys(struct tty *, const char *, size_t,
+		    size_t *, int);
 static int	tty_keys_next1(struct tty *, const char *, size_t,
 		    struct tty_key_parse *, int);
 
@@ -94,7 +100,8 @@ static const struct {
 	{ KEYC_REPORT_XDA, tty_keys_extended_device_attributes },
 	{ KEYC_REPORT_COLOURS, tty_keys_colours1 },
 	{ KEYC_REPORT_PALETTE, tty_keys_palette },
-	{ KEYC_REPORT_WINSZ, tty_keys_winsz }
+	{ KEYC_REPORT_WINSZ, tty_keys_winsz },
+	{ KEYC_REPORT_KITTY_KEYS, tty_keys_kitty_keys }
 };
 
 /* A key tree entry. */
@@ -681,6 +688,10 @@ tty_keys_reply(struct tty *tty, const char *buf, size_t len,
 		return (1);
 	}
 
+	n = tty_keys_kitty_key(tty, buf, len, &kp->size, &kp->key, &kp->extra);
+	if (n != -1)
+		return (n);
+	memset(&kp->extra, 0, sizeof kp->extra);
 	return (tty_keys_extended_key(tty, buf, len, &kp->size, &kp->key));
 }
 
@@ -991,6 +1002,7 @@ complete_key:
 		event = xcalloc(1, sizeof *event);
 		event->key = kp.key;
 		memcpy(&event->m, &kp.m, sizeof event->m);
+		memcpy(&event->extra, &kp.extra, sizeof event->extra);
 
 		event->buf = xmalloc(kp.size);
 		event->len = kp.size;
@@ -1138,6 +1150,233 @@ tty_keys_extended_key(struct tty *tty, const char *buf, size_t len,
 	}
 
 	*key = nkey;
+	return (0);
+}
+
+/*
+ * Handle a key in the kitty keyboard protocol format. The forms are
+ * \033[k:s:b;m:e;t...u, \033[k;m:e~ and \033[1;m:eX, where k is the key, s
+ * the shifted key, b the base layout key, m the modifiers, e the event type
+ * and t the text as codepoints. Returns 0 for success, -1 for failure, 1 for
+ * partial.
+ */
+static int
+tty_keys_kitty_key(struct tty *tty, const char *buf, size_t len, size_t *size,
+    key_code *key, struct key_extra *ke)
+{
+	struct client	*c = tty->client;
+	size_t		 end;
+	u_int		 field = 0, sub = 0, value = 0, modifiers, cp, i;
+	int		 have = 0, plain;
+	char		 ch;
+	key_code	 nkey;
+	struct utf8_data ud;
+	utf8_char	 uc;
+
+	/*
+	 * Keys may still arrive in this form just after the protocol has been
+	 * turned off, so use it whenever the terminal supports it.
+	 */
+	*size = 0;
+	if (tty->kitty_keys == 0 && (~tty->term->flags & TERM_KITTYKEYS))
+		return (-1);
+
+	/* First two bytes are always \033[. */
+	if (buf[0] != '\033')
+		return (-1);
+	if (len == 1)
+		return (1);
+	if (buf[1] != '[')
+		return (-1);
+	if (len == 2)
+		return (1);
+
+	memset(ke, 0, sizeof *ke);
+	ke->type = KEY_EXTRA_PRESS;
+	ke->code = 1;
+	ke->modifiers = 1;
+
+	/* Parse each field and subfield up to the final character. */
+	for (end = 2; end < len; end++) {
+		if (end == KEY_EXTRA_SIZE)
+			return (-1);
+		ch = buf[end];
+		if (ch >= '0' && ch <= '9') {
+			value = value * 10 + (ch - '0');
+			if (value > 0x10ffff)
+				return (-1);
+			have = 1;
+			continue;
+		}
+		if (ch != ':' && ch != ';' && strchr("u~ABCDEFHPQS", ch) == NULL)
+			return (-1);
+
+		switch (field) {
+		case 0:
+			if (sub == 0 && have)
+				ke->code = value;
+			else if (sub == 0 && ch == 'u')
+				ke->code = 0;
+			else if (sub == 1)
+				ke->shifted = value;
+			else if (sub == 2)
+				ke->base = value;
+			else if (sub > 2)
+				return (-1);
+			break;
+		case 1:
+			if (sub == 0 && have)
+				ke->modifiers = value;
+			else if (sub == 1 && have) {
+				if (value < KEY_EXTRA_PRESS ||
+				    value > KEY_EXTRA_RELEASE)
+					return (-1);
+				ke->type = value;
+			} else if (sub > 1)
+				return (-1);
+			break;
+		case 2:
+			if (have && value >= 0x20 && ke->ntext < KEY_EXTRA_TEXT)
+				ke->text[ke->ntext++] = value;
+			break;
+		default:
+			return (-1);
+		}
+
+		if (ch == ':')
+			sub++;
+		else if (ch == ';') {
+			field++;
+			sub = 0;
+		} else
+			break;
+		value = 0;
+		have = 0;
+	}
+	if (end == len)
+		return (1);
+	ke->final = buf[end];
+
+	/* Only the u form may have alternate keys or text. */
+	if (ke->final != 'u' &&
+	    (field > 1 || ke->shifted != 0 || ke->base != 0))
+		return (-1);
+	if (ke->modifiers == 0)
+		ke->modifiers = 1;
+	ke->modifiers--;
+	modifiers = ke->modifiers;
+
+	/* Work out the key. */
+	nkey = input_key_kitty_to_key(ke->final, ke->code);
+	if (nkey == KEYC_UNKNOWN)
+		return (-1);
+	*size = end + 1;
+	plain = ((modifiers & ~(KITTY_KEYS_MOD_SHIFT|KITTY_KEYS_MOD_LOCKS)) == 0);
+	if (nkey == KEYC_NONE) {
+		/*
+		 * A text key. If there are no modifiers other than Shift, the
+		 * text is what the key would type, or the shifted key if
+		 * there is one. With other modifiers, Shift is kept so it can
+		 * be used for key bindings. The Shift modifier is dropped for
+		 * printable keys like other extended keys.
+		 */
+		cp = ke->code;
+		if (cp == 0) {
+			if (ke->ntext == 0)
+				return (-1);
+			cp = ke->text[0];
+		}
+		if (plain && ke->ntext == 1)
+			cp = ke->text[0];
+		else if ((modifiers & ~KITTY_KEYS_MOD_LOCKS) ==
+		    KITTY_KEYS_MOD_SHIFT) {
+			if (ke->shifted >= 0x20 && ke->shifted != 0x7f)
+				cp = ke->shifted;
+			else if (cp >= 'a' && cp <= 'z')
+				cp -= 0x20;
+		}
+		if (plain && cp >= 0x20 && cp != 0x7f)
+			modifiers &= ~KITTY_KEYS_MOD_SHIFT;
+		if (cp > 0x7f) {
+			if (utf8_fromwc(cp, &ud) != UTF8_DONE ||
+			    utf8_from_data(&ud, &uc) != UTF8_DONE)
+				return (-1);
+			nkey = uc;
+		} else
+			nkey = cp;
+	}
+
+	/* Convert S-Tab into Backtab. */
+	if (nkey == '\011' && (modifiers & KITTY_KEYS_MOD_SHIFT)) {
+		nkey = KEYC_BTAB;
+		modifiers &= ~KITTY_KEYS_MOD_SHIFT;
+	}
+
+	/* Add the modifiers. */
+	if (modifiers & KITTY_KEYS_MOD_SHIFT)
+		nkey |= KEYC_SHIFT;
+	if (modifiers & (KITTY_KEYS_MOD_ALT|KITTY_KEYS_MOD_META))
+		nkey |= (KEYC_META|KEYC_IMPLIED_META);
+	if (modifiers & KITTY_KEYS_MOD_CTRL)
+		nkey |= KEYC_CTRL;
+
+	if (log_get_level() != 0) {
+		log_debug("%s: kitty key %.*s is %llx (%s) type %d", c->name,
+		    (int)*size, buf, nkey, key_string_lookup_key(nkey, 1),
+		    ke->type);
+		for (i = 0; i < ke->ntext; i++) {
+			log_debug("%s: kitty key text %u is U+%04X", c->name, i,
+			    ke->text[i]);
+		}
+	}
+
+	*key = nkey;
+	return (0);
+}
+
+/*
+ * Handle kitty keyboard protocol flags reply, \033[?flagsu. Returns 0 for
+ * success, -1 for failure, 1 for partial.
+ */
+static int
+tty_keys_kitty_keys(struct tty *tty, const char *buf, size_t len, size_t *size,
+    int apply)
+{
+	struct client	*c = tty->client;
+	size_t		 i;
+
+	*size = 0;
+
+	/* First three bytes are always \033[?. */
+	if (buf[0] != '\033')
+		return (-1);
+	if (len == 1)
+		return (1);
+	if (buf[1] != '[')
+		return (-1);
+	if (len == 2)
+		return (1);
+	if (buf[2] != '?')
+		return (-1);
+
+	/* Then some digits and a u. */
+	for (i = 3; i < len && i < 16; i++) {
+		if (buf[i] < '0' || buf[i] > '9')
+			break;
+	}
+	if (i == len)
+		return (1);
+	if (i == 3 || buf[i] != 'u')
+		return (-1);
+	*size = i + 1;
+	if (!apply)
+		return (0);
+
+	log_debug("%s: received kitty keys %.*s", c->name, (int)*size, buf);
+	if (~tty->term->flags & TERM_KITTYKEYS) {
+		tty_parse_client_features(c, "kittykeys", ",");
+		tty_update_features(tty);
+	}
 	return (0);
 }
 

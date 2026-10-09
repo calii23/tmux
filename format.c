@@ -2490,7 +2490,15 @@ format_cb_pane_unseen_changes(struct format_tree *ft)
 static void *
 format_cb_pane_key_mode(struct format_tree *ft)
 {
+	char	*value;
+	u_int	 flags;
+
 	if (ft->wp != NULL && ft->wp->screen != NULL) {
+		flags = screen_kitty_keys(ft->wp->screen);
+		if (flags != 0) {
+			xasprintf(&value, "Kitty %u", flags);
+			return (value);
+		}
 		switch (ft->wp->screen->mode & EXTENDED_KEY_MODES) {
 		case MODE_KEYS_EXTENDED:
 			return (xstrdup("Ext 1"));

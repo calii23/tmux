@@ -44,6 +44,7 @@ static void	server_client_set_title(struct client *);
 static void	server_client_set_path(struct client *);
 static void	server_client_set_progress_bar(struct client *);
 static void	server_client_reset_state(struct client *);
+static void	server_client_check_keys_down(struct client *);
 static void	server_client_update_latest(struct client *);
 static int	server_client_handle_dead_key(struct window_pane *, key_code);
 static void	server_client_dispatch(struct imsg *, void *);
@@ -1295,6 +1296,18 @@ server_client_repeat_time(struct client *c, struct key_binding *bd)
 	return (repeat);
 }
 
+/*
+ * Is this a kitty key with Super or Hyper? These have no key code modifiers,
+ * so would otherwise look like the key without them.
+ */
+static int
+server_client_key_has_super(struct key_event *event)
+{
+	return (event->extra.final != '\0' &&
+	    (event->extra.modifiers &
+	    (KITTY_KEYS_MOD_SUPER|KITTY_KEYS_MOD_HYPER)) != 0);
+}
+
 /* Handle a key press which closes a dead pane. */
 static int
 server_client_handle_dead_key(struct window_pane *wp, key_code key)
@@ -1312,6 +1325,102 @@ server_client_handle_dead_key(struct window_pane *wp, key_code key)
 	options_set_number(wp->options, "remain-on-exit", 0);
 	server_destroy_pane(wp, 0);
 	return (1);
+}
+
+/* Remember a key sent to a pane, so its release can go to the same pane. */
+static void
+server_client_key_down(struct client *c, struct window_pane *wp,
+    const struct key_extra *ke)
+{
+	u_int	i;
+
+	if (ke->final == '\0' || ke->type == KEY_EXTRA_RELEASE)
+		return;
+	for (i = 0; i < c->nkeys_down; i++) {
+		if (c->keys_down[i].code == ke->code &&
+		    c->keys_down[i].final == ke->final)
+			break;
+	}
+	/* A repeat leaves the release with the pane which had the press. */
+	if (i != c->nkeys_down && ke->type == KEY_EXTRA_REPEAT)
+		return;
+	if (i == c->nkeys_down) {
+		if (c->nkeys_down == CLIENT_KEYS_DOWN) {
+			memmove(&c->keys_down[0], &c->keys_down[1],
+			    (CLIENT_KEYS_DOWN - 1) * sizeof c->keys_down[0]);
+			c->nkeys_down--;
+		}
+		i = c->nkeys_down++;
+	}
+	c->keys_down[i].code = ke->code;
+	c->keys_down[i].final = ke->final;
+	c->keys_down[i].pane = wp->id;
+}
+
+/* Find and forget the pane a released key was sent to. */
+static struct window_pane *
+server_client_key_up(struct client *c, const struct key_extra *ke)
+{
+	u_int	i, pane;
+
+	for (i = 0; i < c->nkeys_down; i++) {
+		if (c->keys_down[i].code == ke->code &&
+		    c->keys_down[i].final == ke->final)
+			break;
+	}
+	if (i == c->nkeys_down)
+		return (NULL);
+	pane = c->keys_down[i].pane;
+	memmove(&c->keys_down[i], &c->keys_down[i + 1],
+	    (c->nkeys_down - i - 1) * sizeof c->keys_down[0]);
+	c->nkeys_down--;
+	return (window_pane_find_by_id(pane));
+}
+
+/*
+ * Forget held keys whose release cannot arrive: the terminal is not reporting
+ * releases or the pane has gone.
+ */
+static void
+server_client_check_keys_down(struct client *c)
+{
+	u_int	i;
+
+	if (~c->tty.kitty_keys & KITTY_KEYS_EVENT_TYPES) {
+		c->nkeys_down = 0;
+		return;
+	}
+	for (i = 0; i < c->nkeys_down; /* nothing */) {
+		if (window_pane_find_by_id(c->keys_down[i].pane) != NULL) {
+			i++;
+			continue;
+		}
+		memmove(&c->keys_down[i], &c->keys_down[i + 1],
+		    (c->nkeys_down - i - 1) * sizeof c->keys_down[0]);
+		c->nkeys_down--;
+	}
+}
+
+/*
+ * Handle a key release or a modifier key alone. These do not go through the
+ * key tables: releases go to the pane which had the key press (if any) and
+ * modifier keys to the active pane.
+ */
+static void
+server_client_key_passive(struct client *c, struct winlink *wl,
+    struct window_pane *wp, struct key_event *event)
+{
+	struct key_extra	*ke = &event->extra;
+
+	if (c->flags & CLIENT_READONLY)
+		return;
+	if (ke->type == KEY_EXTRA_RELEASE)
+		wp = server_client_key_up(c, ke);
+	else if (wp != NULL && TAILQ_EMPTY(&wp->modes))
+		server_client_key_down(c, wp, ke);
+	if (wp == NULL || (wp->flags & PANE_EXITED))
+		return;
+	window_pane_key(wp, c, c->session, wl, event->key, NULL, ke);
 }
 
 /*
@@ -1383,6 +1492,19 @@ server_client_key_callback(struct cmdq_item *item, void *data)
 	if (!KEYC_IS_MOUSE(key) || cmd_find_from_mouse(&fs, m, 0) != 0)
 		cmd_find_from_client(&fs, c, 0);
 	wp = fs.wp;
+
+	/* Releases and modifier keys alone are not looked up in key tables. */
+	if (input_key_is_passive(&event->extra)) {
+		server_client_key_passive(c, wl, wp, event);
+		goto out;
+	}
+
+	/*
+	 * Key bindings cannot have Super or Hyper, so keys with them would
+	 * match bindings for the key without. Send them to the pane instead.
+	 */
+	if (server_client_key_has_super(event))
+		goto forward_key;
 
 	/* Forward mouse keys if disabled. */
 	if (KEYC_IS_MOUSE(key) && !options_get_number(s->options, "mouse"))
@@ -1580,8 +1702,11 @@ forward_key:
 		goto out;
 	if (c->flags & CLIENT_READONLY)
 		goto out;
-	if (wp != NULL)
-		window_pane_key(wp, c, s, wl, key, m);
+	if (wp != NULL) {
+		if (TAILQ_EMPTY(&wp->modes))
+			server_client_key_down(c, wp, &event->extra);
+		window_pane_key(wp, c, s, wl, key, m, &event->extra);
+	}
 	goto out;
 
 paste_key:
@@ -1665,7 +1790,21 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 	 * and the command prompt are special cases. The queue might be blocked so
 	 * they need to be processed immediately rather than queued.
 	 */
-	if (~c->flags & CLIENT_READONLY) {
+	/*
+	 * Releases and modifier keys must not wait behind a blocked queue
+	 * either if the pane is capturing all keys, since its presses don't.
+	 */
+	wp = s->curw->window->active;
+	if (input_key_is_passive(&event->extra) &&
+	    wp != NULL &&
+	    (wp->flags & PANE_CAPTUREALLKEYS) &&
+	    TAILQ_EMPTY(&wp->modes)) {
+		server_client_key_passive(c, s->curw, wp, event);
+		return (0);
+	}
+
+	if ((~c->flags & CLIENT_READONLY) &&
+	    !input_key_is_passive(&event->extra)) {
 		if (c->message_string != NULL) {
 			if (c->message_ignore_keys)
 				return (0);
@@ -1678,7 +1817,8 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 		if (wp != NULL &&
 		    wp == wp->window->modal &&
 		    (wp->flags & PANE_CLOSEONCANCEL) &&
-		    (event->key == '\033' || event->key == ('c'|KEYC_CTRL))) {
+		    (event->key == '\033' || event->key == ('c'|KEYC_CTRL)) &&
+		    !server_client_key_has_super(event)) {
 			server_kill_pane(wp);
 			return (0);
 		}
@@ -1687,8 +1827,9 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 		    TAILQ_EMPTY(&wp->modes) &&
 		    !KEYC_IS_MOUSE(event->key)) {
 			if (~wp->flags & PANE_EXITED) {
+				server_client_key_down(c, wp, &event->extra);
 				window_pane_key(wp, c, s, s->curw, event->key,
-				    &event->m);
+				    &event->m, &event->extra);
 				return (0);
 			}
 		}
@@ -2058,7 +2199,7 @@ server_client_reset_state(struct client *c)
 	struct options		*oo = c->session->options;
 	int			 mode = 0, cursor, flags, pane_mode = 0;
 	u_int			 cx = 0, cy = 0, ox, oy, sx, sy, prompt = 0;
-	u_int			 sb_w;
+	u_int			 sb_w, kitty_keys;
 	struct visible_ranges	*r;
 
 	if (c->flags & (CLIENT_CONTROL|CLIENT_SUSPENDED))
@@ -2185,6 +2326,26 @@ server_client_reset_state(struct client *c)
 	/* Set the terminal mode and reset attributes. */
 	tty_update_mode(tty, mode, s);
 	tty_reset(tty);
+
+	/*
+	 * Use the kitty keyboard protocol on the terminal if the pane wants it.
+	 * Alternate keys and text are always asked for so tmux can tell what
+	 * key was pressed for key bindings and other panes. While keys sent
+	 * to a pane are held, only add flags so their releases still arrive.
+	 */
+	if (s != NULL) {
+		kitty_keys = 0;
+		if (!prompt && w->menu == NULL)
+			kitty_keys = screen_kitty_keys(s);
+		if (kitty_keys != 0)
+			kitty_keys |= KITTY_KEYS_ALTERNATE;
+		if (kitty_keys & KITTY_KEYS_ALL)
+			kitty_keys |= KITTY_KEYS_TEXT;
+		server_client_check_keys_down(c);
+		if (c->nkeys_down != 0)
+			kitty_keys |= tty->kitty_keys;
+		tty_update_kitty_keys(tty, kitty_keys);
+	}
 
 	/* All writing must be done, send a sync end (if it was started). */
 	tty_sync_end(tty);
