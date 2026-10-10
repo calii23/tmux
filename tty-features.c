@@ -415,6 +415,13 @@ static const struct tty_feature tty_feature_kittygraphics = {
 	TERM_KITTYGRAPHICS
 };
 
+/* Terminal supports the kitty clipboard protocol (OSC 5522). */
+static const struct tty_feature tty_feature_kittyclipboard = {
+	"kittyclipboard",
+	NULL,
+	TERM_KITTYCLIPBOARD
+};
+
 /* Terminal supports UTF-8. */
 static const struct tty_feature tty_feature_utf8 = {
 	"utf8",
@@ -435,6 +442,7 @@ static const struct tty_feature *const tty_features[] = {
 	&tty_feature_extkeys,
 	&tty_feature_focus,
 	&tty_feature_ignorefkeys,
+	&tty_feature_kittyclipboard,
 	&tty_feature_kittygraphics,
 	&tty_feature_kittykeys,
 	&tty_feature_margins,

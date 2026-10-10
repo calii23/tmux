@@ -1730,6 +1730,9 @@ input_csi_dispatch(struct input_ctx *ictx)
 		case 2031:	/* theme update notifications */
 			n = (s->mode & MODE_THEME_UPDATES) ? 1 : 2;
 			break;
+		case 5522:	/* clipboard paste events */
+			n = (s->mode & MODE_PASTE_EVENTS) ? 1 : 2;
+			break;
 		default:
 			n = 0;
 			break;
@@ -1995,6 +1998,9 @@ input_csi_dispatch_rm_private(struct input_ctx *ictx)
 		case 2004:
 			screen_write_mode_clear(sctx, MODE_BRACKETPASTE);
 			break;
+		case 5522:
+			screen_write_mode_clear(sctx, MODE_PASTE_EVENTS);
+			break;
 		case 2026:
 			screen_write_end_sync(sctx);
 			break;
@@ -2097,6 +2103,9 @@ input_csi_dispatch_sm_private(struct input_ctx *ictx)
 			break;
 		case 2004:
 			screen_write_mode_set(sctx, MODE_BRACKETPASTE);
+			break;
+		case 5522:
+			screen_write_mode_set(sctx, MODE_PASTE_EVENTS);
 			break;
 		case 2031:
 			screen_write_mode_set(sctx, MODE_THEME_UPDATES);
@@ -2865,6 +2874,10 @@ input_exit_osc(struct input_ctx *ictx)
 		break;
 	case 133:
 		input_osc_133(ictx, p);
+		break;
+	case 5522:
+		if (wp != NULL)
+			clipboard_pane_message(wp, p);
 		break;
 	default:
 		log_debug("%s: unknown '%u'", __func__, option);
@@ -3648,20 +3661,30 @@ input_osc_52_reply(struct input_ctx *ictx, char clip)
 	struct bufferevent	*ev = ictx->event;
 	struct paste_buffer	*pb;
 	int			 state;
-	const char		*buf;
+	const char		*buf, *end;
 	size_t			 len;
 
 	state = options_get_number(global_options, "get-clipboard");
 	if (state == 0)
 		return;
+	if (ictx->input_end == INPUT_END_BEL)
+		end = "\007";
+	else
+		end = "\033\\";
+
+	/* Use the kitty clipboard protocol if the terminal has it. */
+	if (ictx->wp != NULL &&
+	    clipboard_osc52_read(ictx->wp, clip, end, state == 3) == 0)
+		return;
+
 	if (state == 1) {
-		if ((pb = paste_get_top(NULL)) == NULL)
-			return;
-		buf = paste_buffer_data(pb, &len);
-		if (ictx->input_end == INPUT_END_BEL)
-			input_reply_clipboard(ev, buf, len, "\007", clip);
-		else
-			input_reply_clipboard(ev, buf, len, "\033\\", clip);
+		/* Reply with nothing if no buffer so the program does not wait. */
+		if ((pb = paste_get_top(NULL)) == NULL) {
+			buf = NULL;
+			len = 0;
+		} else
+			buf = paste_buffer_data(pb, &len);
+		input_reply_clipboard(ev, buf, len, end, clip);
 		return;
 	}
 	input_add_request(ictx, INPUT_REQUEST_CLIPBOARD, ictx->input_end);

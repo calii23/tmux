@@ -414,6 +414,7 @@ server_client_lost(struct client *c)
 	status_free(c);
 	input_cancel_requests(c);
 	dnd_client_free(c);
+	clipboard_client_free(c);
 	graphics_client_free(c);
 
 	free(c->title);
@@ -2327,7 +2328,7 @@ server_client_reset_state(struct client *c)
 
 	/* Clear bracketed paste mode if at the prompt. */
 	if (prompt)
-		mode &= ~MODE_BRACKETPASTE;
+		mode &= ~(MODE_BRACKETPASTE|MODE_PASTE_EVENTS);
 
 	/* Set the terminal mode and reset attributes. */
 	tty_update_mode(tty, mode, s);

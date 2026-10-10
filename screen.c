@@ -933,6 +933,8 @@ screen_mode_to_string(int mode)
 		strlcat(tmp, "KEYS_EXTENDED_2,", sizeof tmp);
 	if (mode & MODE_THEME_UPDATES)
 		strlcat(tmp, "THEME_UPDATES,", sizeof tmp);
+	if (mode & MODE_PASTE_EVENTS)
+		strlcat(tmp, "PASTE_EVENTS,", sizeof tmp);
 	if (mode & MODE_SYNC)
 		strlcat(tmp, "SYNC,", sizeof tmp);
 	if (*tmp != '\0')
