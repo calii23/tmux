@@ -101,6 +101,7 @@ dist_tmux_SOURCES = \
 	cmd-choose-tree.c \
 	cmd-command-prompt.c \
 	cmd-confirm-before.c \
+	cmd-connect-remote.c \
 	cmd-copy-mode.c \
 	cmd-detach-client.c \
 	cmd-display-menu.c \
@@ -199,6 +200,7 @@ dist_tmux_SOURCES = \
 	prompt-history.c \
 	prompt.c \
 	regsub.c \
+	remote.c \
 	resize.c \
 	screen-redraw.c \
 	screen-write.c \

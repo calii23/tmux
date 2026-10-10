@@ -543,6 +543,19 @@ const struct options_table_entry options_table[] = {
 	  .text = "Maximum number of commands to keep in history."
 	},
 
+	{ .name = "remote-servers",
+	  .type = OPTIONS_TABLE_STRING,
+	  .scope = OPTIONS_TABLE_SERVER,
+	  .flags = OPTIONS_TABLE_IS_ARRAY,
+	  .default_str = "",
+	  .separator = "",
+	  .text = "Array of remote tmux servers. "
+		  "Each entry is a name followed by flags giving the host (-H), "
+		  "user (-u), ssh arguments (-o), ssh command (-s), remote tmux "
+		  "path (-t), remote tmux arguments (-a) and idle time in "
+		  "seconds (-i)."
+	},
+
 	{ .name = "set-clipboard",
 	  .type = OPTIONS_TABLE_CHOICE,
 	  .scope = OPTIONS_TABLE_SERVER,

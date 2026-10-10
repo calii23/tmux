@@ -21,8 +21,57 @@ Currently supported protocols in this fork:
   clipboard reads and writes with fallback to tmux buffer if your emulator doesn't support it
 - [Pointer shapes](https://sw.kovidgoyal.net/kitty/pointer-shapes/) (OSC 22):
   mouse pointer shape of the pane under the mouse
-- Desktop notifications (OSC 99):
+- [Desktop notifications](https://sw.kovidgoyal.net/kitty/desktop-notifications/) (OSC 99):
   send push notifications from the terminal (also support legacy OSC 9 messages)
+
+## Remote panes
+
+Another thing I added to this fork (has nothing to do with Kitty) is
+the ability to connect to a remote tmux server and add panes from it.
+
+This works by connecting to the server using SSH and use that secure
+connection for all communication.
+
+**Important:** The SSH connection must work without password entry. I would recommend
+to authenticate using a public key therefore. And also the remote server must
+run the same version (this fork) of tmux for this to work.
+
+### Configuring remote servers
+
+First you need to add the connection to your `.tmux.conf` file:
+
+```
+set -g remote-servers[0] "dev-server1 -u ubuntu -H 10.0.2.4"
+set -g remote-servers[1] "dev-server2 -u root -H 10.0.2.22 -t /root/.bin/tmux"
+set -g remote-servers[2] "dev-server3 -H devbox.example.com -u dev -o '-p 2222' -t /opt/bin/tmux -a '-L work' -i 600"
+```
+
+Syntax for a server connection is:
+
+```
+server-name [-H ssh-host] [-u ssh-user] [-o 'extra-ssh-args'] [-s ssh-command] [-t remote-path-to-tmux] [-a 'extra-tmux-args'] [-i idle-time]
+```
+
+The idle time is the amount of seconds after which the connection is closed and set as inactive.
+An inactive connection will be automatically revived when switching to a window with a pane
+from that server or when pressing any key into a pane. Default is 300s (5 minutes).
+
+A connection also becomes inactive if the connection breaks. That could happen for various reasons
+like server reboot, local internet connection is broken, laptop closed, etc. The connection is
+only re-established when actually needed in that case.
+
+### Attaching the remote server
+
+There are several new commands added to handle the remote connections:
+
+- `tmux connect-remote [-d] remote-name` (alias `connect`): connects to the remote server and attaches all currently unattached panes into a new client
+- `tmux disconnect-remote remote-name` (alias `disconnect`): disconnects the remote server rendering all active panes as disconnected. These panes don't revive automatically like inactive ones do.
+- `tmux list-remotes` (alias `lsr`): lists the configured remote servers
+- `tmux cleanup-remote remote-name`: removes all disconnected panes from the local server (the panes keep running on the remote server and will be re-attached when connecting again)
+
+Then you can use `tmux new-window -r remote-name` and `tmux split-window -r remote-name` which creates a new pane on the remote server and opens a window or splits the current window and attaches it there.
+
+Creating a new pane also automatically connects to the server in case it wasn't already.
 
 ## Welcome to tmux!
 

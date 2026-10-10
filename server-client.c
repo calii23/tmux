@@ -1782,6 +1782,13 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 	/* Check the client is good to accept input. */
 	if (s == NULL || (c->flags & CLIENT_UNATTACHEDFLAGS))
 		return (0);
+	if (!KEYC_IS_MOUSE(event->key) &&
+	    !KEYC_IS_PASTE(event->key) &&
+	    (event->key & KEYC_MASK_KEY) != KEYC_FOCUS_IN &&
+	    (event->key & KEYC_MASK_KEY) != KEYC_FOCUS_OUT &&
+	    (event->key & KEYC_MASK_KEY) != KEYC_REPORT_LIGHT_THEME &&
+	    (event->key & KEYC_MASK_KEY) != KEYC_REPORT_DARK_THEME)
+		remote_key(c);
 
 	if (event->key == KEYC_REPORT_LIGHT_THEME) {
 		server_client_report_theme(c, THEME_LIGHT);
@@ -1938,6 +1945,9 @@ server_client_loop(void)
 
 	/* Redraw placeholder cells held back while drawing output. */
 	graphics_flush_held();
+
+	/* Reconnect or idle remotes. */
+	remote_check();
 
 	/* Check clients. */
 	TAILQ_FOREACH(c, &clients, entry) {

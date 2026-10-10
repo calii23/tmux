@@ -128,6 +128,12 @@ spawn_window(struct spawn_context *sc, char **cause)
 	 */
 	if (sc->flags & SPAWN_RESPAWN) {
 		w = sc->wl->window;
+		TAILQ_FOREACH(wp, &w->panes, entry) {
+			if (wp->remote != NULL) {
+				xasprintf(cause, "can't respawn remote pane");
+				return (NULL);
+			}
+		}
 		if (~sc->flags & SPAWN_KILL) {
 			TAILQ_FOREACH(wp, &w->panes, entry) {
 				if (wp->fd != -1)
@@ -310,6 +316,11 @@ spawn_pane(struct spawn_context *sc, char **cause)
 	 */
 	hlimit = options_get_number(s->options, "history-limit");
 	if (sc->flags & SPAWN_RESPAWN) {
+		if (sc->wp0->remote != NULL) {
+			xasprintf(cause, "can't respawn remote pane");
+			free(cwd);
+			return (NULL);
+		}
 		if (sc->wp0->fd != -1 && (~sc->flags & SPAWN_KILL)) {
 			window_pane_index(sc->wp0, &idx);
 			xasprintf(cause, "pane %s:%d.%u still active",

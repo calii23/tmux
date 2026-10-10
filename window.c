@@ -601,6 +601,10 @@ window_pane_send_resize(struct window_pane *wp, u_int sx, u_int sy)
 	struct window	*w = wp->window;
 	struct winsize	 ws;
 
+	if (wp->remote != NULL) {
+		remote_pane_resize(wp, sx, sy);
+		return;
+	}
 	if (wp->fd == -1)
 		return;
 
@@ -1664,6 +1668,7 @@ window_pane_destroy(struct window_pane *wp)
 	dnd_pane_destroy(wp);
 	clipboard_pane_destroy(wp);
 	notify_pane_destroy(wp);
+	remote_pane_destroy(wp);
 
 	window_pane_free_modes(wp);
 	screen_write_sync_clear_dirty(wp);
@@ -1772,6 +1777,37 @@ window_pane_set_event(struct window_pane *wp)
 	wp->ictx = input_init(wp, wp->event, &wp->palette);
 
 	bufferevent_enable(wp->event, EV_READ|EV_WRITE);
+}
+
+/* Replace the file descriptor of a pane which has no process. */
+void
+window_pane_set_fd(struct window_pane *wp, int fd)
+{
+	struct client	*loop;
+
+	if (wp->event != NULL) {
+		bufferevent_free(wp->event);
+		wp->event = NULL;
+	}
+	if (wp->fd != -1)
+		close(wp->fd);
+	if (wp->ictx != NULL) {
+		input_free(wp->ictx);
+		wp->ictx = NULL;
+	}
+
+	wp->offset.used = 0;
+	wp->base_offset = 0;
+	wp->pipe_offset.used = 0;
+	TAILQ_FOREACH(loop, &clients, entry) {
+		if (loop->flags & CLIENT_CONTROL)
+			control_reset_pane(loop, wp);
+	}
+
+	wp->fd = fd;
+	wp->flags &= ~(PANE_EMPTY|PANE_EXITED|PANE_STATUSREADY|
+	    PANE_STATUSDRAWN);
+	window_pane_set_event(wp);
 }
 
 void

@@ -328,6 +328,7 @@ server_send_exit(void)
 		c->session = NULL;
 	}
 
+	remote_disconnect_all();
 	RB_FOREACH_SAFE(s, sessions, &sessions, s1)
 		session_destroy(s, 1, __func__);
 }

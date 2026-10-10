@@ -41,12 +41,13 @@ const struct cmd_entry cmd_new_pane_entry = {
 	.description = "Create a floating pane.",
 	.alias = "newp",
 
-	.args = { "AbB:Cc:Dde:EfF:hIkl:KLMm:Op:PR:s:S:t:T:vWx:X:y:Y:Z", 0, -1, NULL },
+	.args = { "AbB:Cc:Dde:EfF:hIkl:KLMm:Op:PR:r:s:S:t:T:vWx:X:y:Y:Z", 0, -1, NULL },
 	.usage = "[-AbCDefhIkKLMOPvWZ] [-B border-lines] "
 		 "[-c start-directory] [-e environment] "
 		 "[-F format] [-l size] [-m message] [-p percentage] "
 		 "[-s style] [-S active-border-style] "
-		 "[-R inactive-border-style] [-T title] [-x width] [-y height] "
+		 "[-R inactive-border-style] [-r remote-name] [-T title] "
+		 "[-x width] [-y height] "
 		 "[-X x-position] [-Y y-position] " CMD_TARGET_PANE_USAGE " "
 		 "[shell-command [argument ...]]",
 
@@ -61,11 +62,11 @@ const struct cmd_entry cmd_split_window_entry = {
 	.description = "Create a new pane by splitting a window.",
 	.alias = "splitw",
 
-	.args = { "bB:c:de:EfF:hIkl:m:p:PR:s:S:t:T:vWZ", 0, -1, NULL },
+	.args = { "bB:c:de:EfF:hIkl:m:p:PR:r:s:S:t:T:vWZ", 0, -1, NULL },
 	.usage = "[-bdefhIklPvWZ] [-B border-lines] [-c start-directory] "
 		 "[-e environment] [-F format] [-l size] [-m message] "
 		 "[-p percentage] [-s style] [-S active-border-style] "
-		 "[-R inactive-border-style] [-T title] "
+		 "[-R inactive-border-style] [-r remote-name] [-T title] "
 	         CMD_TARGET_PANE_USAGE " [shell-command [argument ...]]",
 
 	.target = { 't', CMD_FIND_PANE, 0 },
@@ -159,6 +160,13 @@ cmd_split_window_exec(struct cmd *self, struct cmdq_item *item)
 		cmdq_error(item, "command cannot be given for empty pane");
 		return (CMD_RETURN_ERROR);
 	}
+	if (args_has(args, 'r')) {
+		if (empty) {
+			cmdq_error(item, "remote pane cannot be empty");
+			return (CMD_RETURN_ERROR);
+		}
+		flags |= SPAWN_EMPTY;
+	}
 	if (empty)
 		flags |= SPAWN_EMPTY;
 
@@ -215,6 +223,13 @@ cmd_split_window_exec(struct cmd *self, struct cmdq_item *item)
 		 * fork-failure path removes the pane and destroys the layout
 		 * cell), so new_wp is NULL and there is nothing for fail to do.
 		 */
+		goto fail;
+	}
+	if (args_has(args, 'r') && remote_pane_start(new_wp,
+	    args_get(args, 'r'), sc.argc, sc.argv, args_get(args, 'c'),
+	    &cause) != 0) {
+		cmdq_error(item, "%s", cause);
+		free(cause);
 		goto fail;
 	}
 	if (args_has(args, 'K') && args_has(args, 'O'))

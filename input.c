@@ -1051,6 +1051,40 @@ input_parse_pane(struct window_pane *wp)
 	window_pane_update_used_data(wp, &wp->offset, new_size);
 }
 
+/* Get escape sequences to restore drawing attributes. */
+static char *
+input_get_cell_attributes(struct input_cell *cell)
+{
+	char	buf[256];
+
+	grid_string_cell_code(&cell->cell, buf, sizeof buf,
+	    GRID_STRING_ESCAPE_SEQUENCES);
+	if (cell->g0set)
+		strlcat(buf, "\\033(0", sizeof buf);
+	if (cell->g1set)
+		strlcat(buf, "\\033)0", sizeof buf);
+	if (cell->set)
+		strlcat(buf, "\\016", sizeof buf);
+	return (xstrdup(buf));
+}
+
+/* Get escape sequences to restore the current drawing attributes. */
+char *
+input_get_attributes(struct input_ctx *ictx)
+{
+	return (input_get_cell_attributes(&ictx->cell));
+}
+
+/* Get the cursor saved by DECSC and escape sequences for its attributes. */
+char *
+input_get_saved(struct input_ctx *ictx, u_int *cx, u_int *cy, int *origin)
+{
+	*cx = ictx->old_cx;
+	*cy = ictx->old_cy;
+	*origin = !!(ictx->old_mode & MODE_ORIGIN);
+	return (input_get_cell_attributes(&ictx->old_cell));
+}
+
 /* Parse given input. */
 void
 input_parse_buffer(struct window_pane *wp, const u_char *buf, size_t len)
@@ -1177,6 +1211,9 @@ input_get(struct input_ctx *ictx, u_int validx, int minval, int defval)
 static void
 input_send_reply(struct input_ctx *ictx, const char *reply)
 {
+	/* Remote panes are answered by the remote server. */
+	if (ictx->wp != NULL && ictx->wp->remote != NULL)
+		return;
 	if (ictx->event != NULL) {
 		log_debug("%s: %s", __func__, reply);
 		bufferevent_write(ictx->event, reply, strlen(reply));
@@ -2117,7 +2154,9 @@ input_csi_dispatch_sm_private(struct input_ctx *ictx)
 			screen_write_mode_set(sctx, MODE_BRACKETPASTE);
 			break;
 		case 5522:
-			screen_write_mode_set(sctx, MODE_PASTE_EVENTS);
+			/* The remote server owns paste events. */
+			if (ictx->wp == NULL || ictx->wp->remote == NULL)
+				screen_write_mode_set(sctx, MODE_PASTE_EVENTS);
 			break;
 		case 2031:
 			screen_write_mode_set(sctx, MODE_THEME_UPDATES);
@@ -3691,6 +3730,9 @@ input_osc_52_reply(struct input_ctx *ictx, char clip)
 	const char		*buf, *end;
 	size_t			 len;
 
+	/* Remote panes are answered by the remote server. */
+	if (ictx->wp != NULL && ictx->wp->remote != NULL)
+		return;
 	state = options_get_number(global_options, "get-clipboard");
 	if (state == 0)
 		return;

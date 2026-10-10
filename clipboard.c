@@ -450,7 +450,8 @@ clipboard_send_pane(struct window_pane *wp, const struct clipboard_msg *msg)
 {
 	char	*s;
 
-	if (wp == NULL || wp->event == NULL)
+	/* Remote panes are answered by the remote server. */
+	if (wp == NULL || wp->event == NULL || wp->remote != NULL)
 		return;
 	s = clipboard_build(msg);
 	log_debug("%s: %%%u: %s", __func__, wp->id, s);
@@ -1178,9 +1179,10 @@ clipboard_pane_message(struct window_pane *wp, const char *s)
 		return;
 	}
 	clipboard_check_password(&msg);
-	if (strcmp(msg.type, "read") == 0)
-		clipboard_pane_read(wp, &msg);
-	else if (strcmp(msg.type, "write") == 0)
+	if (strcmp(msg.type, "read") == 0) {
+		if (wp->remote == NULL)
+			clipboard_pane_read(wp, &msg);
+	} else if (strcmp(msg.type, "write") == 0)
 		clipboard_pane_write(wp, &msg);
 	else if (strcmp(msg.type, "wdata") == 0)
 		clipboard_pane_wdata(wp, &msg);

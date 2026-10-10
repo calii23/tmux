@@ -960,7 +960,14 @@ format_cb_current_command(struct format_tree *ft)
 	struct window_pane	*wp = ft->wp;
 	char			*cmd, *value;
 
-	if (wp == NULL || wp->shell == NULL)
+	if (wp == NULL)
+		return (NULL);
+	if (wp->remote != NULL) {
+		if (remote_pane_command(wp) == NULL)
+			return (NULL);
+		return (xstrdup(remote_pane_command(wp)));
+	}
+	if (wp->shell == NULL)
 		return (NULL);
 
 	cmd = osdep_get_name(wp->fd, wp->tty);
@@ -1864,6 +1871,68 @@ format_cb_cursor_shape(struct format_tree *ft)
 	return (NULL);
 }
 
+/* Callback for cursor_attributes. */
+static void *
+format_cb_cursor_attributes(struct format_tree *ft)
+{
+	if (ft->wp != NULL && ft->wp->ictx != NULL)
+		return (input_get_attributes(ft->wp->ictx));
+	return (NULL);
+}
+
+/* Get part of the cursor saved by DECSC. */
+static void *
+format_cursor_saved(struct format_tree *ft, int which)
+{
+	char	*attributes;
+	u_int	 cx, cy;
+	int	 origin;
+
+	if (ft->wp == NULL || ft->wp->ictx == NULL)
+		return (NULL);
+	attributes = input_get_saved(ft->wp->ictx, &cx, &cy, &origin);
+	switch (which) {
+	case 0:
+		return (attributes);
+	case 1:
+		free(attributes);
+		return (format_printf("%d", origin));
+	case 2:
+		free(attributes);
+		return (format_printf("%u", cx));
+	}
+	free(attributes);
+	return (format_printf("%u", cy));
+}
+
+/* Callback for cursor_saved_attributes. */
+static void *
+format_cb_cursor_saved_attributes(struct format_tree *ft)
+{
+	return (format_cursor_saved(ft, 0));
+}
+
+/* Callback for cursor_saved_origin_flag. */
+static void *
+format_cb_cursor_saved_origin_flag(struct format_tree *ft)
+{
+	return (format_cursor_saved(ft, 1));
+}
+
+/* Callback for cursor_saved_x. */
+static void *
+format_cb_cursor_saved_x(struct format_tree *ft)
+{
+	return (format_cursor_saved(ft, 2));
+}
+
+/* Callback for cursor_saved_y. */
+static void *
+format_cb_cursor_saved_y(struct format_tree *ft)
+{
+	return (format_cursor_saved(ft, 3));
+}
+
 /* Callback for cursor_very_visible. */
 static void *
 format_cb_cursor_very_visible(struct format_tree *ft)
@@ -2590,6 +2659,36 @@ format_cb_pane_pid(struct format_tree *ft)
 {
 	if (ft->wp != NULL && ft->wp->fd != -1)
 		return (format_printf("%ld", (long)ft->wp->pid));
+	return (NULL);
+}
+
+/* Callback for pane_remote. */
+static void *
+format_cb_pane_remote(struct format_tree *ft)
+{
+	if (ft->wp != NULL && ft->wp->remote != NULL)
+		return (xstrdup(remote_pane_name(ft->wp)));
+	return (NULL);
+}
+
+/* Callback for pane_remote_connected. */
+static void *
+format_cb_pane_remote_connected(struct format_tree *ft)
+{
+	if (ft->wp != NULL && ft->wp->remote != NULL) {
+		if (remote_pane_connected(ft->wp))
+			return (xstrdup("1"));
+		return (xstrdup("0"));
+	}
+	return (NULL);
+}
+
+/* Callback for pane_remote_state. */
+static void *
+format_cb_pane_remote_state(struct format_tree *ft)
+{
+	if (ft->wp != NULL && ft->wp->remote != NULL)
+		return (xstrdup(remote_pane_state(ft->wp)));
 	return (NULL);
 }
 
@@ -3711,6 +3810,9 @@ static const struct format_table_entry format_table[] = {
 	{ "config_files", FORMAT_TABLE_STRING,
 	  format_cb_config_files
 	},
+	{ "cursor_attributes", FORMAT_TABLE_STRING,
+	  format_cb_cursor_attributes
+	},
 	{ "cursor_blinking", FORMAT_TABLE_STRING,
 	  format_cb_cursor_blinking
 	},
@@ -3722,6 +3824,18 @@ static const struct format_table_entry format_table[] = {
 	},
 	{ "cursor_flag", FORMAT_TABLE_STRING,
 	  format_cb_cursor_flag
+	},
+	{ "cursor_saved_attributes", FORMAT_TABLE_STRING,
+	  format_cb_cursor_saved_attributes
+	},
+	{ "cursor_saved_origin_flag", FORMAT_TABLE_STRING,
+	  format_cb_cursor_saved_origin_flag
+	},
+	{ "cursor_saved_x", FORMAT_TABLE_STRING,
+	  format_cb_cursor_saved_x
+	},
+	{ "cursor_saved_y", FORMAT_TABLE_STRING,
+	  format_cb_cursor_saved_y
 	},
 	{ "cursor_shape", FORMAT_TABLE_STRING,
 	  format_cb_cursor_shape
@@ -3953,6 +4067,15 @@ static const struct format_table_entry format_table[] = {
 	},
 	{ "pane_private_modes", FORMAT_TABLE_STRING,
 	  format_cb_pane_private_modes
+	},
+	{ "pane_remote", FORMAT_TABLE_STRING,
+	  format_cb_pane_remote
+	},
+	{ "pane_remote_connected", FORMAT_TABLE_STRING,
+	  format_cb_pane_remote_connected
+	},
+	{ "pane_remote_state", FORMAT_TABLE_STRING,
+	  format_cb_pane_remote_state
 	},
 	{ "pane_right", FORMAT_TABLE_STRING,
 	  format_cb_pane_right

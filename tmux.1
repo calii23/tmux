@@ -3656,6 +3656,7 @@ option.
 .Op Fl e Ar environment
 .Op Fl F Ar format
 .Op Fl n Ar window\-name
+.Op Fl r Ar remote\-name
 .Op Fl t Ar target\-window
 .Op Ar shell\-command Op Ar argument ...
 .Xc
@@ -3744,6 +3745,17 @@ By default, it uses the format
 .Ql #{session_name}:#{window_index}
 but a different format may be specified with
 .Fl F .
+.Pp
+With
+.Fl r ,
+the pane is created on the remote server
+.Ar remote\-name
+(see
+.Sx REMOTE PANES ) .
+.Ar shell\-command
+and
+.Fl c
+are passed to the remote server.
 .Tg newp
 .It Xo Ic new\-pane
 .Op Fl AbCDefhIkKLMOPvWZ
@@ -3755,6 +3767,7 @@ but a different format may be specified with
 .Op Fl m Ar message
 .Op Fl p Ar percentage
 .Op Fl R Ar inactive\-border\-style
+.Op Fl r Ar remote\-name
 .Op Fl s Ar style
 .Op Fl S Ar active\-border\-style
 .Op Fl t Ar target\-pane
@@ -4179,6 +4192,7 @@ the command behaves like
 .Op Fl m Ar message
 .Op Fl p Ar percentage
 .Op Fl R Ar inactive\-border\-style
+.Op Fl r Ar remote\-name
 .Op Fl s Ar style
 .Op Fl S Ar active\-border\-style
 .Op Fl t Ar target\-pane
@@ -4188,6 +4202,12 @@ the command behaves like
 .D1 Pq alias: Ic splitw
 Create a new pane by splitting
 .Ar target\-pane .
+With
+.Fl r ,
+the new pane is created on the remote server
+.Ar remote\-name ,
+as for
+.Ic new\-window .
 If
 .Fl d
 is given, the session does not make the new pane the current pane.
@@ -5142,6 +5162,61 @@ each client.
 .It Ic prompt\-history\-limit Ar number
 Set the number of history items to save in the history file for each type of
 command prompt.
+.It Xo Ic remote\-servers[]
+.Ar name
+.Op Fl a Ar tmux\-arguments
+.Op Fl H Ar host
+.Op Fl i Ar idle\-time
+.Op Fl o Ar ssh\-arguments
+.Op Fl s Ar ssh\-command
+.Op Fl t Ar tmux\-path
+.Op Fl u Ar user
+.Xc
+Remote servers which may be used with
+.Ic connect\-remote
+and the
+.Fl r
+flag of
+.Ic new\-window
+and
+.Ic split\-window .
+Each entry is a name followed by flags, which may be quoted as for
+.Xr sh 1 .
+The remote server is reached by running
+.Xr ssh 1
+(or
+.Ar ssh\-command )
+with
+.Fl T ,
+any
+.Ar ssh\-arguments ,
+.Fl l Ar user
+if given, and
+.Ar host
+(by default the same as
+.Ar name ) .
+It runs
+.Ar tmux\-path
+(default
+.Ql tmux )
+on the remote host with any
+.Ar tmux\-arguments
+and starts control mode attached to a session named after the local host,
+which is used to hold the remote panes.
+The values are quoted for the remote shell.
+.Ar idle\-time
+is the number of seconds after which the connection is closed when no client
+has a window with a pane from the remote server as its current window
+(default 300, 0 never closes it); the remote server is then inactive (see
+.Sx REMOTE PANES ) .
+For example:
+.Bd -literal -offset indent
+set \-as remote\-servers \e
+	"dev \-H dev.example.com \-u me \-o \(aq\-p 2222\(aq \-a \(aq\-L work\(aq"
+.Ed
+.Pp
+See
+.Sx REMOTE PANES .
 .It Xo Ic set\-clipboard
 .Op Cm on | external | off
 .Xc
@@ -7574,6 +7649,7 @@ The following variables are available, where appropriate:
 .It Li "command_list_name_width" Ta "" Ta "Maximum command name width in list"
 .It Li "command_list_usage" Ta "" Ta "Command usage if listing commands"
 .It Li "config_files" Ta "" Ta "List of configuration files loaded"
+.It Li "cursor_attributes" Ta "" Ta "Escape sequences for current drawing attributes"
 .It Li "cursor_blinking" Ta "" Ta "1 if the cursor is blinking"
 .It Li "copy_cursor_hyperlink" Ta "" Ta "Hyperlink under cursor in copy mode"
 .It Li "copy_cursor_line" Ta "" Ta "Line the cursor is on in copy mode"
@@ -7587,6 +7663,10 @@ The following variables are available, where appropriate:
 .It Li "cursor_character" Ta "" Ta "Character at cursor in pane"
 .It Li "cursor_colour" Ta "" Ta "Cursor colour in pane"
 .It Li "cursor_flag" Ta "" Ta "Pane cursor flag"
+.It Li "cursor_saved_attributes" Ta "" Ta "Escape sequences for saved cursor drawing attributes"
+.It Li "cursor_saved_origin_flag" Ta "" Ta "1 if origin mode is saved with the cursor"
+.It Li "cursor_saved_x" Ta "" Ta "Saved cursor X position in pane"
+.It Li "cursor_saved_y" Ta "" Ta "Saved cursor Y position in pane"
 .It Li "cursor_shape" Ta "" Ta "Cursor shape in pane"
 .It Li "cursor_very_visible" Ta "" Ta "1 if the cursor is in very visible mode"
 .It Li "cursor_x" Ta "" Ta "Cursor X position in pane"
@@ -7701,6 +7781,9 @@ The following variables are available, where appropriate:
 .It Li "pane_private_modes" Ta "" Ta "List of enabled DECSET private modes"
 .It Li "pane_pb_state" Ta "" Ta "Pane progress bar state, one of hidden, normal, error, indeterminate, paused (can be set by application)"
 .It Li "pane_pb_progress" Ta "" Ta "Pane progress bar progress percentage (can be set by application)"
+.It Li "pane_remote" Ta "" Ta "Name of remote server if a remote pane"
+.It Li "pane_remote_connected" Ta "" Ta "1 if remote server of pane connected"
+.It Li "pane_remote_state" Ta "" Ta "connected, inactive or disconnected"
 .It Li "pane_right" Ta "" Ta "Right of pane"
 .It Li "pane_search_string" Ta "" Ta "Last search string in copy mode"
 .It Li "pane_start_command" Ta "" Ta "Command pane started with"
@@ -9111,6 +9194,147 @@ Animation frames are kept and sent to the terminal with the image, but are
 not otherwise used by
 .Nm .
 At most 4096 frame and animation commands are kept for each image.
+.Sh REMOTE PANES
+.Nm
+can show panes from other
+.Nm
+servers, for example on another host reached with
+.Xr ssh 1 .
+The remote server is reached as configured in the
+.Ic remote\-servers
+option and
+.Nm
+acts as a control mode client of it (see
+.Sx CONTROL MODE ) .
+Each remote pane is kept alone in its own window on the remote server, linked
+into the session the control client is attached to, and appears as an
+ordinary local pane: it may be moved, joined with local panes or panes from
+other remote servers, and resized like any other.
+The remote window is resized to match the local pane.
+Pane output is parsed by the local
+.Nm ,
+so features such as the kitty graphics protocol work with the local terminal;
+replies to terminal queries come from the remote server.
+This includes clipboard reads (OSC 52 and the kitty clipboard protocol): they
+are answered only by the remote server, following its
+.Ic get\-clipboard
+option, so a program gets a single consistent reply.
+Clipboard writes from remote panes still reach the local clipboard, but paste
+events (mode 5522) are left to the remote server.
+Desktop notifications (OSC 99) are the exception: the remote server has no
+terminal to show them, so the local
+.Nm
+shows them and answers their queries.
+.Pp
+When a pane is adopted, its contents, cursor, modes and tab stops are copied
+from the remote server, keeping wrapped lines.
+The current drawing attributes and the cursor saved by DECSC are only copied
+if the remote server has the
+.Ql cursor_attributes
+and
+.Ql cursor_saved_attributes
+formats.
+.Pp
+Killing a remote pane locally also kills it on the remote server, except when
+the local server exits.
+Remote panes cannot be respawned, nor can windows containing them.
+The
+.Ic remain\-on\-exit
+option is turned on for remote panes on the remote server, so their exit
+status is seen.
+A new remote pane first runs a placeholder, which is replaced with
+.Ic respawn\-pane
+once the option is set and the pane has the local size, so the command cannot
+exit before and starts with the right size.
+Without a command, the remote
+.Ic window\-default\-command
+or
+.Ic default\-command
+is run as
+.Ic new\-window
+would, or if both are empty the remote
+.Ic default\-shell
+is started with
+.Fl l
+as a login shell.
+When a remote pane exits, it is killed on the remote server and
+the local pane exits with the same status, following the local
+.Ic remain\-on\-exit .
+Dead panes are not adopted when connecting.
+A remote server not connected is either inactive or disconnected.
+It is inactive when the connection is lost or after the idle time given in the
+.Ic remote\-servers
+option; it is disconnected after
+.Ic disconnect\-remote .
+Remote panes of a server not connected keep their contents with a
+.Ql [remote ... inactive]
+or
+.Ql [remote ... disconnected]
+marker on the last line and ignore input until the remote server is connected
+again, when they are revived.
+An inactive remote server is connected again when a client's current window
+becomes one with a pane from that server, or when a key is pressed in a client
+whose current window has such a pane; the key is not passed to the remote pane.
+If the connection fails, the server stays inactive until the next of these.
+A disconnected remote server is only connected again by
+.Ic connect\-remote
+or by creating a pane on it with
+.Fl r .
+Panes which have gone from the remote server in the meantime exit, and those
+which have died exit with their status after their contents are copied.
+Creating a pane on a remote server not connected with
+.Fl r ,
+or connecting again to an inactive server, connects to it as
+.Ic connect\-remote
+does, without switching the client.
+The
+.Ic choose\-tree
+default format shows the remote server of each remote pane, and whether it is
+connected, inactive or disconnected.
+.Bl -tag -width Ds
+.It Ic cleanup\-remote Ar remote\-name
+Kill the local panes of
+.Ar remote\-name
+which are not connected (inactive or disconnected).
+The panes are left running on the remote server and are adopted again the next
+time it is connected.
+.Tg connect
+.It Xo Ic connect\-remote
+.Op Fl d
+.Ar remote\-name
+.Xc
+.D1 Pq alias: Ic connect
+Connect to
+.Ar remote\-name
+if not connected and adopt its panes.
+Panes in sessions with no attached clients and panes in the control client's
+session are adopted; panes which share a window are moved into their own
+window first.
+Adopted panes are placed in a local session named after the remote server,
+which is created if needed, and their contents are copied.
+Panes from an earlier connection to the same remote server are revived.
+Unless
+.Fl d
+is given, the client is switched to that session.
+.Tg disconnect
+.It Ic disconnect\-remote Ar remote\-name
+.D1 Pq alias: Ic disconnect
+Disconnect from
+.Ar remote\-name ,
+leaving its panes running on the remote server.
+The remote server is disconnected and is not connected again until
+.Ic connect\-remote
+or a new pane with
+.Fl r ;
+if it is inactive, it becomes disconnected.
+.Tg lsr
+.It Ic list\-remotes
+.D1 Pq alias: Ic lsr
+List the remote servers from the
+.Ic remote\-servers
+option, their settings, whether they are connected, inactive or
+disconnected and how many local panes they have.
+.El
 .Sh TERMINFO EXTENSIONS
 .Nm
 understands some unofficial extensions to

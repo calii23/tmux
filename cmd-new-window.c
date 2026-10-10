@@ -39,9 +39,9 @@ const struct cmd_entry cmd_new_window_entry = {
 	.description = "Create a window.",
 	.alias = "neww",
 
-	.args = { "abc:de:EF:kn:PSt:", 0, -1, NULL },
+	.args = { "abc:de:EF:kn:Pr:St:", 0, -1, NULL },
 	.usage = "[-abdEkPS] [-c start-directory] [-e environment] [-F format] "
-		 "[-n window-name] " CMD_TARGET_WINDOW_USAGE
+		 "[-n window-name] [-r remote-name] " CMD_TARGET_WINDOW_USAGE
 		 " [shell-command [argument ...]]",
 
 	.target = { 't', CMD_FIND_WINDOW, CMD_FIND_WINDOW_INDEX },
@@ -154,6 +154,13 @@ cmd_new_window_exec(struct cmd *self, struct cmdq_item *item)
 	sc.flags = 0;
 	if (args_has(args, 'E') || (count == 1 && *args_string(args, 0) == '\0'))
 		sc.flags |= SPAWN_EMPTY;
+	if (args_has(args, 'r')) {
+		if (sc.flags & SPAWN_EMPTY) {
+			cmdq_error(item, "remote pane cannot be empty");
+			goto fail;
+		}
+		sc.flags |= SPAWN_EMPTY;
+	}
 	if (args_has(args, 'd'))
 		sc.flags |= SPAWN_DETACHED;
 	if (args_has(args, 'k'))
@@ -162,6 +169,14 @@ cmd_new_window_exec(struct cmd *self, struct cmdq_item *item)
 	if ((new_wl = spawn_window(&sc, &cause)) == NULL) {
 		cmdq_error(item, "create window failed: %s", cause);
 		free(cause);
+		goto fail;
+	}
+	if (args_has(args, 'r') && remote_pane_start(new_wl->window->active,
+	    args_get(args, 'r'), sc.argc, sc.argv, args_get(args, 'c'),
+	    &cause) != 0) {
+		cmdq_error(item, "%s", cause);
+		free(cause);
+		server_kill_window(new_wl->window, 1);
 		goto fail;
 	}
 	if (!args_has(args, 'd') || new_wl == s->curw) {

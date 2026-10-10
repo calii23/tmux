@@ -69,6 +69,7 @@ struct json_node;
 struct menu_data;
 struct mode_tree_data;
 struct mouse_event;
+struct remote_pane;
 struct options;
 struct options_array_item;
 struct options_entry;
@@ -1542,6 +1543,7 @@ struct window_pane {
 	struct input_ctx *ictx;
 	struct dnd_pane	*dnd;
 	struct clipboard_pane *clipboard;
+	struct remote_pane *remote;
 
 	struct grid_cell cached_gc;
 	struct grid_cell cached_active_gc;
@@ -3621,6 +3623,8 @@ void	 input_reset(struct input_ctx *, int);
 struct evbuffer *input_pending(struct input_ctx *);
 void	 input_parse_pane(struct window_pane *);
 void	 input_parse_buffer(struct window_pane *, const u_char *, size_t);
+char	*input_get_attributes(struct input_ctx *);
+char	*input_get_saved(struct input_ctx *, u_int *, u_int *, int *);
 void	 input_parse_screen(struct input_ctx *, struct screen *,
 	     screen_write_init_ctx_cb, void *, const u_char *, size_t);
 void	 input_reply_clipboard(struct bufferevent *, const char *, size_t,
@@ -3713,6 +3717,7 @@ void	 grid_clear(struct grid *, u_int, u_int, u_int, u_int, u_int);
 void	 grid_clear_lines(struct grid *, u_int, u_int, u_int);
 void	 grid_move_lines(struct grid *, u_int, u_int, u_int, u_int);
 void	 grid_move_cells(struct grid *, u_int, u_int, u_int, u_int, u_int);
+void	 grid_string_cell_code(const struct grid_cell *, char *, size_t, int);
 char	*grid_string_cells(struct grid *, u_int, u_int, u_int,
 	     struct grid_cell **, int, struct screen *);
 void	 grid_duplicate_lines(struct grid *, u_int, struct grid *, u_int,
@@ -3937,6 +3942,7 @@ struct window	*window_create(u_int, u_int, u_int, u_int);
 void		 window_pane_set_event(struct window_pane *);
 void		 window_pane_utmp_add(struct window_pane *);
 void		 window_pane_utmp_remove(struct window_pane *);
+void		 window_pane_set_fd(struct window_pane *, int);
 void		 window_pane_wait_finish(struct window_pane *);
 struct window_pane *window_get_active_at(struct window *, u_int, u_int);
 struct window_pane *window_find_string(struct window *, const char *);
@@ -4444,6 +4450,23 @@ struct spawn_editor_state *spawn_editor(struct client *, const char *, size_t,
 void		 spawn_cancel_editor(struct spawn_editor_state *);
 pid_t		 spawn_get_editor_pid(struct spawn_editor_state *);
 void		 spawn_editor_finish(struct window_pane *);
+
+/* remote.c */
+int		 remote_connect(struct cmdq_item *, const char *, int, char **);
+int		 remote_disconnect(const char *, char **);
+int		 remote_cleanup(const char *, char **);
+void		 remote_check(void);
+void		 remote_key(struct client *);
+void		 remote_disconnect_all(void);
+void		 remote_list(struct cmdq_item *);
+int		 remote_pane_start(struct window_pane *, const char *, int,
+		     char **, const char *, char **);
+void		 remote_pane_resize(struct window_pane *, u_int, u_int);
+void		 remote_pane_destroy(struct window_pane *);
+int		 remote_pane_connected(struct window_pane *);
+const char	*remote_pane_state(struct window_pane *);
+const char	*remote_pane_name(struct window_pane *);
+const char	*remote_pane_command(struct window_pane *);
 
 /* regsub.c */
 char		*regsub(const char *, const char *, const char *, int);

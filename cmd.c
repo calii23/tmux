@@ -39,10 +39,13 @@ extern const struct cmd_entry cmd_clear_prompt_history_entry;
 extern const struct cmd_entry cmd_clock_mode_entry;
 extern const struct cmd_entry cmd_command_prompt_entry;
 extern const struct cmd_entry cmd_confirm_before_entry;
+extern const struct cmd_entry cmd_cleanup_remote_entry;
+extern const struct cmd_entry cmd_connect_remote_entry;
 extern const struct cmd_entry cmd_copy_mode_entry;
 extern const struct cmd_entry cmd_customize_mode_entry;
 extern const struct cmd_entry cmd_delete_buffer_entry;
 extern const struct cmd_entry cmd_detach_client_entry;
+extern const struct cmd_entry cmd_disconnect_remote_entry;
 extern const struct cmd_entry cmd_display_menu_entry;
 extern const struct cmd_entry cmd_display_message_entry;
 extern const struct cmd_entry cmd_display_popup_entry;
@@ -63,6 +66,7 @@ extern const struct cmd_entry cmd_list_clients_entry;
 extern const struct cmd_entry cmd_list_commands_entry;
 extern const struct cmd_entry cmd_list_keys_entry;
 extern const struct cmd_entry cmd_list_panes_entry;
+extern const struct cmd_entry cmd_list_remotes_entry;
 extern const struct cmd_entry cmd_list_sessions_entry;
 extern const struct cmd_entry cmd_list_windows_entry;
 extern const struct cmd_entry cmd_load_buffer_entry;
@@ -133,10 +137,13 @@ const struct cmd_entry *cmd_table[] = {
 	&cmd_clock_mode_entry,
 	&cmd_command_prompt_entry,
 	&cmd_confirm_before_entry,
+	&cmd_cleanup_remote_entry,
+	&cmd_connect_remote_entry,
 	&cmd_copy_mode_entry,
 	&cmd_customize_mode_entry,
 	&cmd_delete_buffer_entry,
 	&cmd_detach_client_entry,
+	&cmd_disconnect_remote_entry,
 	&cmd_display_menu_entry,
 	&cmd_display_message_entry,
 	&cmd_display_popup_entry,
@@ -157,6 +164,7 @@ const struct cmd_entry *cmd_table[] = {
 	&cmd_list_commands_entry,
 	&cmd_list_keys_entry,
 	&cmd_list_panes_entry,
+	&cmd_list_remotes_entry,
 	&cmd_list_sessions_entry,
 	&cmd_list_windows_entry,
 	&cmd_load_buffer_entry,

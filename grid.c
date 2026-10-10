@@ -1694,6 +1694,15 @@ grid_string_cells_code(const struct grid_cell *lastgc,
 	}
 }
 
+/* Get the escape sequences to set the attributes of a cell. */
+void
+grid_string_cell_code(const struct grid_cell *gc, char *buf, size_t len,
+    int flags)
+{
+	grid_string_cells_code(&grid_default_cell, gc, buf, len, flags, NULL,
+	    NULL);
+}
+
 /* Convert cells into a string. */
 char *
 grid_string_cells(struct grid *gd, u_int px, u_int py, u_int nx,

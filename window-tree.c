@@ -37,15 +37,25 @@ static void		 window_tree_key(struct window_mode_entry *,
 
 #define WINDOW_TREE_DEFAULT_COMMAND "switch-client -Zt '%%'"
 
+#define WINDOW_TREE_REMOTE_FORMAT \
+	"#{?pane_remote, " \
+		"#{?pane_remote_connected,#[fg=themegreen]," \
+		"#{?#{==:#{pane_remote_state},inactive}," \
+		"#[fg=themeyellow],#[fg=themered]}}" \
+		"[#{pane_remote}#{?pane_remote_connected,,: #{pane_remote_state}}]" \
+	",}"
+
 #define WINDOW_TREE_DEFAULT_FORMAT \
 	"#{?pane_format," \
 		"#{?pane_marked,#[fg=thememagenta],}#{?pane_floating_flag,#[underscore],}" \
 		"#{pane_current_command}#[fg=themelightgrey]#{pane_flags}" \
 		"#{?#{&&:#{pane_title},#{!=:#{pane_title},#{host_short}}},: \"#{pane_title}\",}" \
+		WINDOW_TREE_REMOTE_FORMAT \
 	",window_format," \
 		"#{?window_marked_flag,#[fg=thememagenta],}" \
 		"#{window_name}#[fg=themelightgrey]#{window_flags}" \
 		"#{?#{&&:#{==:#{window_panes},1},#{&&:#{pane_title},#{!=:#{pane_title},#{host_short}}}},: \"#{pane_title}\",}" \
+		"#{?#{==:#{window_panes},1},"WINDOW_TREE_REMOTE_FORMAT",}" \
 	"," \
 		"#[fg=themelightgrey]#{session_windows} windows" \
 		"#{?session_grouped, " \
