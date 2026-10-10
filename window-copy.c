@@ -5790,6 +5790,23 @@ window_copy_get_current_offset(struct window_pane *wp, u_int *offset,
 	return (1);
 }
 
+/* Get the backing grid and the line at the top of the pane, for graphics. */
+int
+window_copy_get_backing(struct window_pane *wp, struct grid **gd, u_int *top)
+{
+	struct window_mode_entry	*wme = TAILQ_FIRST(&wp->modes);
+	struct window_copy_mode_data	*data;
+
+	if (wme == NULL || wme->mode != &window_copy_mode)
+		return (0);
+	data = wme->data;
+	if (data == NULL || window_copy_line_numbers_active(wme))
+		return (0);
+	*gd = data->backing->grid;
+	*top = screen_hsize(data->backing) - data->oy;
+	return (1);
+}
+
 static void
 window_copy_write_line(struct window_mode_entry *wme,
     struct screen_write_ctx *ctx, u_int py)

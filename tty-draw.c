@@ -367,6 +367,10 @@ tty_draw_line(struct tty *tty, struct screen *s, u_int px, u_int py, u_int nx,
 			} else {
 				/* Get the current cell. */
 				grid_view_get_cell(gd, px + i, py, &gc);
+				gcp = graphics_draw_cell(tty, style_ctx, gd,
+				    px + i, py, &gc, &ngc, 0);
+				if (gcp != &gc)
+					memcpy(&gc, gcp, sizeof gc);
 
 				/* Check for multicell characters. */
 				if (gc.mc != 0) {

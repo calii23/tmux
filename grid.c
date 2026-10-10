@@ -1281,7 +1281,7 @@ grid_clear(struct grid *gd, u_int px, u_int py, u_int nx, u_int ny, u_int bg)
 void
 grid_clear_lines(struct grid *gd, u_int py, u_int ny, u_int bg)
 {
-	u_int	yy;
+	u_int	yy, anchor;
 
 	if (ny == 0)
 		return;
@@ -1292,8 +1292,10 @@ grid_clear_lines(struct grid *gd, u_int py, u_int ny, u_int bg)
 		return;
 
 	for (yy = py; yy < py + ny; yy++) {
+		anchor = gd->linedata[yy].anchor;
 		grid_free_line(gd, yy);
 		grid_empty_line(gd, yy, bg);
+		gd->linedata[yy].anchor = anchor;
 	}
 	if (py != 0)
 		gd->linedata[py - 1].flags &= ~GRID_LINE_WRAPPED;

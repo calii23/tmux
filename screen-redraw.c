@@ -1245,6 +1245,10 @@ redraw_draw_pane_span(struct redraw_draw_ctx *dctx,
 	style_ctx.defaults = &defaults;
 	style_ctx.palette = &wp->palette;
 	style_ctx.hyperlinks = s->hyperlinks;
+	if (s->graphics != NULL)
+		style_ctx.graphics = s->graphics;
+	else
+		style_ctx.graphics = wp->base.graphics;
 	style_ctx.multicell = window_pane_multicell_native(wp, c);
 
 	px = span->data.p.px + (x - span->x);
@@ -1811,6 +1815,7 @@ redraw_draw(struct client *c, struct window_pane *wp, int flags)
 
 	if (c->flags & CLIENT_SUSPENDED)
 		return;
+	graphics_client_check(c, 0);
 
 	if (flags & REDRAW_STATUS) {
 		if (c->message_string != NULL)
@@ -2114,6 +2119,7 @@ redraw_client_damage(struct client *c)
 	if (TAILQ_EMPTY(&w->damage))
 		return;
 	redraw_status_generation++;
+	graphics_client_check(c, 0);
 
 	scene = redraw_get_scene(c);
 	if (scene == NULL)

@@ -5239,6 +5239,12 @@ Ignore function keys from
 and use the
 .Nm
 internal set only.
+.It kittygraphics
+Supports the kitty graphics protocol, including unicode placeholders.
+.Nm
+keeps the images sent by programs in panes and sends them to the terminal
+itself; see
+.Sx KITTY GRAPHICS .
 .It kittykeys
 Supports the kitty keyboard protocol.
 This is detected automatically if the terminal answers a query for the
@@ -6444,6 +6450,11 @@ passthrough sequences will be allowed only if the pane is visible.
 If set to
 .Cm all ,
 they will be allowed even if the pane is invisible.
+Kitty graphics protocol commands inside passthrough sequences are always
+handled by
+.Nm
+itself, whatever this option is set to.
+Anything else in the same sequence is passed through only if allowed.
 .Pp
 .It Xo Ic allow\-rename
 .Op Cm on | off
@@ -9007,6 +9018,45 @@ The server exited when it received
 .It server exited unexpectedly
 The server crashed or otherwise exited without telling the client the reason.
 .El
+.Sh KITTY GRAPHICS
+.Nm
+supports the kitty graphics protocol for programs in panes.
+Images sent by a program are kept by
+.Nm ,
+separately for the main and alternate screen of each pane, and are sent to
+each client terminal with the
+.Ic kittygraphics
+feature (see
+.Ic terminal\-features )
+the first time it needs them.
+This means images are not lost when a pane is not visible, a client attaches
+later, or there are several clients.
+Images on the alternate screen are kept when a program leaves it, so they
+can be drawn again when it returns; only their placements are removed.
+Programs do not need to wrap commands in a passthrough sequence, and if they
+do, the commands are still handled by
+.Nm .
+.Pp
+Images placed with unicode placeholders are drawn wherever the placeholder
+characters are, including in copy mode.
+Other placements are anchored to the line holding their top row and move with
+it when the pane scrolls; they are cropped to the part of the pane which is
+visible and are also shown in copy mode (unless line numbers are on).
+When the pane is resized, placements stay with their text as it is
+reflowed.
+Placements relative to another placement follow it when it moves and are
+removed with it.
+Placements may be at most 10000 rows or columns.
+A placement is removed when its top line is removed from the pane, for
+example when it scrolls out of a region or out of the history.
+.Pp
+Data sent in a file, temporary file or shared memory is read by the server
+when the command is received.
+When too much image data is kept, the least recently used images are removed.
+Animation frames are kept and sent to the terminal with the image, but are
+not otherwise used by
+.Nm .
+At most 4096 frame and animation commands are kept for each image.
 .Sh TERMINFO EXTENSIONS
 .Nm
 understands some unofficial extensions to
