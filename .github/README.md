@@ -1,4 +1,26 @@
-# Welcome to tmux!
+# kitty-tmux
+
+## About this fork
+
+`kitty-tmux` is a fork of [tmux](https://github.com/tmux/tmux) that adds support
+for protocols from the [kitty](https://sw.kovidgoyal.net/kitty/) terminal and
+other features that are not mainstream enough for upstream tmux.
+
+I'll give my best to maintain this fork as I use `tmux` as my daily-driver myself.
+Feel free open issues if you'd like to see any more protocols supported and
+I will see what I can do.
+
+Currently supported protocols in this fork:
+
+- [Keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/):
+- [Text sizing protocol](https://sw.kovidgoyal.net/kitty/text-sizing-protocol/) (OSC 66)
+- [Drag and drop protocol](https://sw.kovidgoyal.net/kitty/dnd-protocol/) (OSC 72)
+- [Graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/):
+  images in panes, without needing passthrough and without the performance penalty
+- [Clipboard protocol](https://sw.kovidgoyal.net/kitty/clipboard/) (OSC 5522):
+  clipboard reads and writes with fallback to tmux buffer if your emulator doesn't support it
+
+## Welcome to tmux!
 
 tmux is a terminal multiplexer: it enables a number of terminals to be created,
 accessed, and controlled from a single screen. tmux may be detached from a
@@ -29,10 +51,10 @@ out of date. Examples are listed on
 
 To build and install tmux from a release tarball, use:
 
-~~~bash
+```bash
 ./configure && make
 sudo make install
-~~~
+```
 
 tmux can use the utempter library to update utmp(5), if it is installed - run
 configure with `--enable-utempter` to enable this.
@@ -45,12 +67,12 @@ For more detailed instructions on building and installing tmux, see
 To get and build the latest from version control - note that this requires
 `autoconf`, `automake` and `pkg-config`:
 
-~~~bash
+```bash
 git clone https://github.com/tmux/tmux.git
 cd tmux
 sh autogen.sh
 ./configure && make
-~~~
+```
 
 ## Contributing
 
@@ -71,9 +93,9 @@ further information.
 For documentation on using tmux, see the tmux.1 manpage. View it from the
 source tree with:
 
-~~~bash
+```bash
 nroff -mdoc tmux.1|less
-~~~
+```
 
 A small example configuration is in `example_tmux.conf`.
 
