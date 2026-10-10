@@ -172,6 +172,7 @@ dist_tmux_SOURCES = \
 	fuzzy.c \
 	grid-reader.c \
 	grid-view.c \
+	graphics.c \
 	grid.c \
 	hooks.c \
 	hyperlinks.c \

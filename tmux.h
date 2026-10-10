@@ -72,6 +72,8 @@ struct options_entry;
 struct prompt;
 struct window_pane_prompt;
 struct redraw_damage;
+struct graphics;
+struct graphics_client;
 struct redraw_scene;
 struct redraw_span;
 struct screen_write_citem;
@@ -1025,6 +1027,8 @@ struct grid_line {
 	u_int			 time;
 	struct osc133_data	 osc133_data;
 	u_short			 flags;
+
+	u_int			 anchor; /* graphics placements */
 };
 
 /* Entire grid of cells. */
@@ -1217,6 +1221,9 @@ struct screen {
 #endif
 
 	struct screen_write_cline	*write_list;
+
+	struct graphics			*graphics;
+	struct graphics			*saved_graphics;
 
 	struct hyperlinks		*hyperlinks;
 	struct progress_bar		 progress_bar;
@@ -1886,6 +1893,7 @@ struct tty_term {
 #define TERM_TEXTSIZINGWIDTH 0x400
 #define TERM_KITTYKEYS 0x800
 #define TERM_DND 0x1000
+#define TERM_KITTYGRAPHICS 0x2000
 	int		 flags;
 
 	LIST_ENTRY(tty_term) entry;
@@ -1898,6 +1906,7 @@ struct tty_style_ctx {
 	struct colour_palette	*palette;
 	u_int			 dim;
 	struct hyperlinks	*hyperlinks;
+	struct graphics		*graphics;
 	int			 multicell; /* draw multicell natively */
 };
 
@@ -2388,6 +2397,7 @@ struct client {
 	size_t			 redraw;
 
 	struct redraw_scene	*redraw_scene;
+	struct graphics_client	*graphics;
 
 	struct event		 repeat_timer;
 
@@ -4192,6 +4202,8 @@ char		*window_copy_get_word(struct window_pane *, u_int, u_int);
 char		*window_copy_get_line(struct window_pane *, u_int);
 int		 window_copy_get_current_offset(struct window_pane *, u_int *,
 		     u_int *);
+int		 window_copy_get_backing(struct window_pane *, struct grid **,
+		     u_int *);
 char		*window_copy_get_hyperlink(struct window_pane *, u_int, u_int);
 void		 window_copy_set_line_numbers(struct window_pane *, int);
 
@@ -4442,6 +4454,29 @@ struct hyperlinks	*hyperlinks_init(void);
 struct hyperlinks	*hyperlinks_copy(struct hyperlinks *);
 void			 hyperlinks_reset(struct hyperlinks *);
 void			 hyperlinks_free(struct hyperlinks *);
+
+/* graphics.c */
+char			*graphics_command(struct screen_write_ctx *,
+			     const char *, size_t);
+void			 graphics_free(struct graphics *);
+void			 graphics_reset(struct screen *);
+void			 graphics_alternate_on(struct screen *);
+void			 graphics_alternate_off(struct screen *);
+void			 graphics_reflow_start(struct screen *);
+void			 graphics_reflow_end(struct screen *);
+void			 graphics_clear(struct screen *, struct window_pane *,
+			     int);
+const struct grid_cell	*graphics_draw_cell(struct tty *,
+			     const struct tty_style_ctx *, struct grid *, u_int,
+			     u_int, const struct grid_cell *,
+			     struct grid_cell *, int);
+void			 graphics_copy_cell(struct screen *, struct screen *,
+			     u_int, u_int, struct grid_cell *);
+void			 graphics_flush_held(void);
+void			 graphics_client_check(struct client *, int);
+void			 graphics_client_sync(struct client *);
+void			 graphics_client_stop(struct client *);
+void			 graphics_client_free(struct client *);
 
 /* dnd.c */
 int			 dnd_parse(struct dnd_msg *, const char *);

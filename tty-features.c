@@ -408,6 +408,13 @@ static const struct tty_feature tty_feature_dnd = {
 	TERM_DND
 };
 
+/* Terminal supports the kitty graphics protocol. */
+static const struct tty_feature tty_feature_kittygraphics = {
+	"kittygraphics",
+	NULL,
+	TERM_KITTYGRAPHICS
+};
+
 /* Terminal supports UTF-8. */
 static const struct tty_feature tty_feature_utf8 = {
 	"utf8",
@@ -428,6 +435,7 @@ static const struct tty_feature *const tty_features[] = {
 	&tty_feature_extkeys,
 	&tty_feature_focus,
 	&tty_feature_ignorefkeys,
+	&tty_feature_kittygraphics,
 	&tty_feature_kittykeys,
 	&tty_feature_margins,
 	&tty_feature_mouse,
@@ -679,6 +687,7 @@ tty_default_features(struct client *c, const char *name, u_int version)
 			      "cstyle,"
 			      "extkeys,"
 			      "focus,"
+			      "kittygraphics,"
 			      "kittykeys,"
 			      "margins,"
 			      "overline,"
@@ -706,6 +715,7 @@ tty_default_features(struct client *c, const char *name, u_int version)
 			      "cstyle,"
 			      "focus,"
 			      "hyperlinks,"
+			      "kittygraphics,"
 			      "kittykeys,"
 			      "overline,"
 			      "sync,"

@@ -100,6 +100,8 @@ screen_init(struct screen *s, u_int sx, u_int sy, u_int hlimit)
 
 	s->write_list = NULL;
 	s->hyperlinks = NULL;
+	s->graphics = NULL;
+	s->saved_graphics = NULL;
 
 	screen_reinit(s, 1);
 }
@@ -138,6 +140,8 @@ screen_reinit(struct screen *s, int check)
 	image_free_all(s);
 #endif
 
+	graphics_reset(s);
+
 	screen_set_progress_bar(s, PROGRESS_BAR_HIDDEN, 0);
 	screen_reset_hyperlinks(s);
 }
@@ -175,6 +179,9 @@ screen_free(struct screen *s)
 	if (s->hyperlinks != NULL)
 		hyperlinks_free(s->hyperlinks);
 	screen_free_titles(s);
+
+	graphics_free(s->graphics);
+	graphics_free(s->saved_graphics);
 
 #ifdef ENABLE_SIXEL
 	/*
@@ -674,7 +681,9 @@ screen_reflow(struct screen *s, u_int new_x, u_int *cx, u_int *cy, int cursor)
 		    wy);
 	}
 
+	graphics_reflow_start(s);
 	grid_reflow(s->grid, new_x);
+	graphics_reflow_end(s);
 
 	if (cursor) {
 		grid_unwrap_position(s->grid, cx, cy, wx, wy);
@@ -716,6 +725,8 @@ screen_alternate_on(struct screen *s, struct grid_cell *gc, int cursor)
 	TAILQ_FOREACH(im, &s->saved_images, entry)
 	    im->list = &s->saved_images;
 #endif
+
+	graphics_alternate_on(s);
 
 	grid_view_clear(s->grid, 0, 0, sx, sy, 8);
 
@@ -771,6 +782,8 @@ screen_alternate_off(struct screen *s, struct grid_cell *gc, int cursor)
 	 * Turn history back on (so resize can use it) and then resize back to
 	 * the current size.
 	 */
+	graphics_alternate_off(s);
+
 	if (s->saved_flags & GRID_HISTORY)
 		s->grid->flags |= GRID_HISTORY;
 	screen_resize(s, sx, sy, 1);
