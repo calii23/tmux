@@ -2170,6 +2170,7 @@ format_cb_pane_private_modes(struct format_tree *ft)
 		{ MODE_FOCUSON,		1004 },	/* focus reporting */
 		{ MODE_MOUSE_UTF8,	1005 },	/* mouse: UTF-8 */
 		{ MODE_MOUSE_SGR,	1006 },	/* mouse: SGR */
+		{ MODE_MOUSE_SGR_PIXELS, 1016 }, /* mouse: SGR pixels */
 		{ MODE_BRACKETPASTE,	2004 },	/* bracketed paste */
 		{ MODE_SYNC,		2026 },	/* synchronized output */
 		{ MODE_THEME_UPDATES,	2031 },	/* theme update notifications */

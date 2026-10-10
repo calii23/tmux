@@ -426,6 +426,8 @@ tty_send_requests(struct tty *tty)
 			dnd_client_start(tty->client);
 		if (~tty->term->flags & TERM_KITTYCLIPBOARD)
 			tty_puts(tty, "\033[?5522$p");
+		if (~tty->term->flags & TERM_POINTERSHAPES)
+			tty_puts(tty, "\033]22;?default\033\\");
 		tty_puts(tty, "\033]10;?\033\\\033]11;?\033\\");
 		tty->flags |= (TTY_WAITBG|TTY_WAITFG);
 	} else
@@ -525,6 +527,11 @@ tty_stop_tty(struct tty *tty)
 		tty_raw(tty, "\033[<u");
 		tty->kitty_keys = 0;
 	}
+	if (tty->pointer_shape != NULL) {
+		tty_raw(tty, "\033]22;<\033\\");
+		free(tty->pointer_shape);
+		tty->pointer_shape = NULL;
+	}
 
 	if (tty_use_margin(tty))
 		tty_raw(tty, tty_term_string(tty->term, TTYC_DSMG));
@@ -563,6 +570,7 @@ void
 tty_free(struct tty *tty)
 {
 	tty_close(tty);
+	free(tty->pointer_shape);
 }
 
 void
@@ -985,6 +993,37 @@ tty_update_kitty_keys(struct tty *tty, u_int flags)
 		xsnprintf(tmp, sizeof tmp, "\033[=%u;1u", flags);
 	tty_puts(tty, tmp);
 	tty->kitty_keys = flags;
+}
+
+/*
+ * Set the pointer shape. The shape is pushed onto the terminal's stack first
+ * so popping it restores whatever was there before.
+ */
+void
+tty_update_pointer_shape(struct tty *tty, const char *name)
+{
+	struct client	*c = tty->client;
+	const char	*old = tty->pointer_shape;
+	char		 tmp[96];
+
+	if (~tty->term->flags & TERM_POINTERSHAPES)
+		name = NULL;
+	if (name == NULL && old == NULL)
+		return;
+	if (name != NULL && old != NULL && strcmp(name, old) == 0)
+		return;
+	log_debug("%s: pointer shape %s -> %s", c->name,
+	    old == NULL ? "none" : old, name == NULL ? "none" : name);
+
+	if (old == NULL)
+		xsnprintf(tmp, sizeof tmp, "\033]22;>%s\033\\", name);
+	else if (name == NULL)
+		xsnprintf(tmp, sizeof tmp, "\033]22;<\033\\");
+	else
+		xsnprintf(tmp, sizeof tmp, "\033]22;=%s\033\\", name);
+	tty_puts(tty, tmp);
+	free(tty->pointer_shape);
+	tty->pointer_shape = (name == NULL) ? NULL : xstrdup(name);
 }
 
 static void

@@ -422,6 +422,13 @@ static const struct tty_feature tty_feature_kittyclipboard = {
 	TERM_KITTYCLIPBOARD
 };
 
+/* Terminal supports pointer shapes (OSC 22). */
+static const struct tty_feature tty_feature_pointershapes = {
+	"pointershapes",
+	NULL,
+	TERM_POINTERSHAPES
+};
+
 /* Terminal supports UTF-8. */
 static const struct tty_feature tty_feature_utf8 = {
 	"utf8",
@@ -449,6 +456,7 @@ static const struct tty_feature *const tty_features[] = {
 	&tty_feature_mouse,
 	&tty_feature_osc7,
 	&tty_feature_overline,
+	&tty_feature_pointershapes,
 	&tty_feature_progressbar,
 	&tty_feature_rectfill,
 	&tty_feature_rgb,
@@ -728,6 +736,10 @@ tty_default_features(struct client *c, const char *name, u_int version)
 			      "overline,"
 			      "sync,"
 			      "usstyle"
+		},
+		{ .name = "kitty",
+		  .version = 31, /* 0.31.0 */
+		  .features = "pointershapes"
 		},
 		{ .name = "kitty",
 		  .version = 40, /* 0.40.0 */

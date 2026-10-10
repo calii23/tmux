@@ -19,6 +19,8 @@ Currently supported protocols in this fork:
   images in panes, without needing passthrough and without the performance penalty
 - [Clipboard protocol](https://sw.kovidgoyal.net/kitty/clipboard/) (OSC 5522):
   clipboard reads and writes with fallback to tmux buffer if your emulator doesn't support it
+- [Pointer shapes](https://sw.kovidgoyal.net/kitty/pointer-shapes/) (OSC 22):
+  mouse pointer shape of the pane under the mouse
 
 ## Welcome to tmux!
 

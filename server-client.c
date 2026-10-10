@@ -2191,6 +2191,52 @@ server_client_prompt_cursor(struct client *c, struct window_pane *wp, int *mode,
 }
 
 /*
+ * Find the pane under the mouse from its last position, so layout changes
+ * are followed without the mouse moving.
+ */
+static struct window_pane *
+server_client_mouse_pane(struct client *c)
+{
+	struct tty		*tty = &c->tty;
+	struct window		*w = c->session->curw->window;
+	struct window_pane	*wp;
+	u_int			 x = tty->mouse_last_x, y = tty->mouse_last_y;
+	u_int			 ox, oy, sx, sy, sl_mpos;
+	int			 at = status_at_line(c);
+	u_int			 lines = status_line_size(c);
+
+	if (!tty->mouse_hover)
+		return (NULL);
+	if (at != -1 && y >= (u_int)at && y < at + lines)
+		return (NULL);
+	if (at == 0)
+		y -= lines;
+
+	tty_window_offset(tty, &ox, &oy, &sx, &sy);
+	if (x > sx || y > sy)
+		return (NULL);
+	x += ox;
+	y += oy;
+	if (w->modal != NULL && !window_pane_contains(w->modal, x, y))
+		return (NULL);
+
+	wp = window_get_active_at(w, x, y);
+	if (wp == NULL || server_client_check_mouse_in_pane(wp, x, y,
+	    &sl_mpos) != KEYC_MOUSE_LOCATION_PANE)
+		return (NULL);
+	return (wp);
+}
+
+/* Get the pointer shape of a pane, if it is not in a mode. */
+static const char *
+server_client_pointer_shape(struct window_pane *wp)
+{
+	if (wp == NULL || wp->screen != &wp->base)
+		return (NULL);
+	return (screen_pointer_shape(&wp->base));
+}
+
+/*
  * Update cursor position and mode settings. The scroll region and attributes
  * are cleared when idle (waiting for an event) as this is the most likely time
  * a user may interrupt tmux, for example with ~^Z in ssh(1). This is a
@@ -2319,6 +2365,10 @@ server_client_reset_state(struct client *c)
 			TAILQ_FOREACH(loop, &w->panes, entry) {
 				if (loop->screen->mode & MODE_MOUSE_ALL)
 					mode |= MODE_MOUSE_ALL;
+				/* Follow the mouse to show pointer shapes. */
+				if ((tty->term->flags & TERM_POINTERSHAPES) &&
+				    server_client_pointer_shape(loop) != NULL)
+					mode |= MODE_MOUSE_ALL;
 			}
 		}
 		if (options_get_number(oo, "focus-follows-mouse") ||
@@ -2356,6 +2406,18 @@ server_client_reset_state(struct client *c)
 			kitty_keys |= tty->kitty_keys;
 		tty_update_kitty_keys(tty, kitty_keys);
 	}
+
+	/*
+	 * Show the pointer shape of the pane under the mouse, or of the active
+	 * pane if tmux does not see the mouse.
+	 */
+	if (w->menu != NULL)
+		loop = NULL;
+	else if (!options_get_number(oo, "mouse"))
+		loop = wp;
+	else
+		loop = server_client_mouse_pane(c);
+	tty_update_pointer_shape(tty, server_client_pointer_shape(loop));
 
 	/* All writing must be done, send a sync end (if it was started). */
 	tty_sync_end(tty);

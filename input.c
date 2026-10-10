@@ -167,6 +167,7 @@ static void	input_osc_9(struct input_ctx *, const char *);
 static void	input_osc_10(struct input_ctx *, const char *);
 static void	input_osc_11(struct input_ctx *, const char *);
 static void	input_osc_12(struct input_ctx *, const char *);
+static void	input_osc_22(struct input_ctx *, const char *);
 static void	input_osc_52(struct input_ctx *, const char *);
 static void	input_osc_66(struct input_ctx *, const char *);
 static void	input_osc_72(struct input_ctx *, const char *);
@@ -1419,6 +1420,8 @@ input_esc_dispatch(struct input_ctx *ictx)
 		colour_palette_clear(ictx->palette);
 		input_reset_cell(ictx);
 		screen_write_reset(sctx);
+		screen_pointer_shapes_reset(sctx->s, 0);
+		screen_pointer_shapes_reset(sctx->s, 1);
 		screen_write_fullredraw(sctx);
 		break;
 	case INPUT_ESC_IND:
@@ -1721,6 +1724,9 @@ input_csi_dispatch(struct input_ctx *ictx)
 		case 1006:	/* mouse: SGR */
 			n = (s->mode & MODE_MOUSE_SGR) ? 1 : 2;
 			break;
+		case 1016:	/* mouse: SGR pixels */
+			n = (s->mode & MODE_MOUSE_SGR_PIXELS) ? 1 : 2;
+			break;
 		case 2004:	/* bracketed paste */
 			n = (s->mode & MODE_BRACKETPASTE) ? 1 : 2;
 			break;
@@ -1988,6 +1994,9 @@ input_csi_dispatch_rm_private(struct input_ctx *ictx)
 		case 1006:
 			screen_write_mode_clear(sctx, MODE_MOUSE_SGR);
 			break;
+		case 1016:
+			screen_write_mode_clear(sctx, MODE_MOUSE_SGR_PIXELS);
+			break;
 		case 47:
 		case 1047:
 			screen_write_alternateoff(sctx, gc, 0);
@@ -2093,6 +2102,9 @@ input_csi_dispatch_sm_private(struct input_ctx *ictx)
 			break;
 		case 1006:
 			screen_write_mode_set(sctx, MODE_MOUSE_SGR);
+			break;
+		case 1016:
+			screen_write_mode_set(sctx, MODE_MOUSE_SGR_PIXELS);
 			break;
 		case 47:
 		case 1047:
@@ -2850,6 +2862,9 @@ input_exit_osc(struct input_ctx *ictx)
 		break;
 	case 12:
 		input_osc_12(ictx, p);
+		break;
+	case 22:
+		input_osc_22(ictx, p);
 		break;
 	case 52:
 		input_osc_52(ictx, p);
@@ -3761,6 +3776,155 @@ input_osc_52(struct input_ctx *ictx, const char *p)
 		events_fire_pane("pane-set-clipboard", wp);
 		paste_add(NULL, out, outlen);
 	}
+}
+
+/* Pointer shape names (OSC 22). */
+static const char *input_osc_22_names[] = {
+	"alias", "cell", "copy", "crosshair", "default", "e-resize",
+	"ew-resize", "grab", "grabbing", "help", "move", "n-resize",
+	"ne-resize", "nesw-resize", "no-drop", "not-allowed", "ns-resize",
+	"nw-resize", "nwse-resize", "pointer", "progress", "s-resize",
+	"se-resize", "sw-resize", "text", "vertical-text", "w-resize", "wait",
+	"zoom-in", "zoom-out"
+};
+
+/* Legacy X11 cursor names accepted as aliases, as kitty does. */
+static const struct {
+	const char	*name;
+	const char	*shape;
+} input_osc_22_aliases[] = {
+	{ "left_ptr", "default" },
+	{ "xterm", "text" },
+	{ "ibeam", "text" },
+	{ "pointing_hand", "pointer" },
+	{ "hand2", "pointer" },
+	{ "hand", "pointer" },
+	{ "question_arrow", "help" },
+	{ "whats_this", "help" },
+	{ "clock", "wait" },
+	{ "watch", "wait" },
+	{ "half-busy", "progress" },
+	{ "left_ptr_watch", "progress" },
+	{ "tcross", "crosshair" },
+	{ "plus", "cell" },
+	{ "cross", "cell" },
+	{ "fleur", "move" },
+	{ "pointer-move", "move" },
+	{ "right_side", "e-resize" },
+	{ "top_right_corner", "ne-resize" },
+	{ "top_left_corner", "nw-resize" },
+	{ "top_side", "n-resize" },
+	{ "bottom_right_corner", "se-resize" },
+	{ "bottom_left_corner", "sw-resize" },
+	{ "bottom_side", "s-resize" },
+	{ "left_side", "w-resize" },
+	{ "sb_h_double_arrow", "ew-resize" },
+	{ "split_h", "ew-resize" },
+	{ "sb_v_double_arrow", "ns-resize" },
+	{ "split_v", "ns-resize" },
+	{ "size_bdiag", "nesw-resize" },
+	{ "size-bdiag", "nesw-resize" },
+	{ "size_fdiag", "nwse-resize" },
+	{ "size-fdiag", "nwse-resize" },
+	{ "zoom_in", "zoom-in" },
+	{ "zoom_out", "zoom-out" },
+	{ "dnd-link", "alias" },
+	{ "dnd-copy", "copy" },
+	{ "forbidden", "not-allowed" },
+	{ "crossed_circle", "not-allowed" },
+	{ "dnd-no-drop", "no-drop" },
+	{ "openhand", "grab" },
+	{ "hand1", "grab" },
+	{ "closedhand", "grabbing" },
+	{ "dnd-none", "grabbing" },
+	{ "arrow", "default" },
+	{ "beam", "text" },
+};
+
+/* Find the pointer shape for a name, or NULL if it is not supported. */
+static const char *
+input_osc_22_shape(const char *name)
+{
+	u_int	i;
+
+	for (i = 0; i < nitems(input_osc_22_names); i++) {
+		if (strcmp(name, input_osc_22_names[i]) == 0)
+			return (input_osc_22_names[i]);
+	}
+	for (i = 0; i < nitems(input_osc_22_aliases); i++) {
+		if (strcmp(name, input_osc_22_aliases[i].name) == 0)
+			return (input_osc_22_aliases[i].shape);
+	}
+	return (NULL);
+}
+
+/* Handle the OSC 22 sequence for pointer shapes. */
+static void
+input_osc_22(struct input_ctx *ictx, const char *p)
+{
+	struct screen		*s = ictx->ctx.s;
+	const char		*end, *shape;
+	char			*copy, *name, *next;
+	struct evbuffer		*reply;
+	int			 op = '=';
+
+	if (ictx->wp == NULL)
+		return;
+	if (*p == '=' || *p == '>' || *p == '<' || *p == '?')
+		op = *p++;
+
+	if (op == '<') {
+		screen_pointer_shapes_pop(s);
+		return;
+	}
+	if (op == '=') {
+		if (*p == '\0')
+			screen_pointer_shapes_set(s, NULL);
+		else if ((shape = input_osc_22_shape(p)) != NULL)
+			screen_pointer_shapes_set(s, shape);
+		return;
+	}
+
+	copy = next = xstrdup(p);
+	if (op == '>') {
+		while ((name = strsep(&next, ",")) != NULL) {
+			if ((shape = input_osc_22_shape(name)) != NULL)
+				screen_pointer_shapes_push(s, shape);
+		}
+		free(copy);
+		return;
+	}
+
+	reply = evbuffer_new();
+	if (reply == NULL)
+		fatalx("out of memory");
+	while ((name = strsep(&next, ",")) != NULL) {
+		if (EVBUFFER_LENGTH(reply) != 0)
+			evbuffer_add(reply, ",", 1);
+		if (strcmp(name, "__current__") == 0) {
+			shape = screen_pointer_shape(s);
+			evbuffer_add_printf(reply, "%s", shape == NULL ? "0" :
+			    shape);
+		} else if (strcmp(name, "__default__") == 0)
+			evbuffer_add_printf(reply, "text");
+		else if (strcmp(name, "__grabbed__") == 0)
+			evbuffer_add_printf(reply, "default");
+		else {
+			/* Only CSS names are reported, not aliases. */
+			shape = input_osc_22_shape(name);
+			evbuffer_add_printf(reply, "%d",
+			    shape != NULL && strcmp(shape, name) == 0);
+		}
+	}
+	free(copy);
+
+	if (ictx->input_end == INPUT_END_BEL)
+		end = "\007";
+	else
+		end = "\033\\";
+	input_reply(ictx, 1, "\033]22;%.*s%s", (int)EVBUFFER_LENGTH(reply),
+	    EVBUFFER_DATA(reply), end);
+	evbuffer_free(reply);
 }
 
 /* Handle the OSC 72 sequence for the drag and drop protocol. */

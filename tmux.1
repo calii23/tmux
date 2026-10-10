@@ -5293,6 +5293,14 @@ mouse sequences.
 Supports the OSC 7 working directory extension.
 .It overline
 Supports the overline SGR attribute.
+.It pointershapes
+Supports the kitty pointer shapes protocol (OSC 22).
+This is detected automatically if the terminal answers an OSC 22 query.
+.Nm
+shows the pointer shape set by the pane under the mouse, or by the active pane
+if the
+.Ic mouse
+option is off.
 .It progressbar
 Supports the OSC 9;4 progress bar extension.
 .It rectfill

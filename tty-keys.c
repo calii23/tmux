@@ -89,6 +89,8 @@ static int	tty_keys_kitty_clipboard(struct tty *, const char *, size_t,
 		    size_t *, int);
 static int	tty_keys_paste_events(struct tty *, const char *, size_t,
 		    size_t *, int);
+static int	tty_keys_pointer_shapes(struct tty *, const char *, size_t,
+		    size_t *, int);
 static int	tty_keys_dnd(struct tty *, const char *, size_t, size_t *,
 		    int);
 static int	tty_keys_next1(struct tty *, const char *, size_t,
@@ -110,7 +112,8 @@ static const struct {
 	{ KEYC_REPORT_KITTY_KEYS, tty_keys_kitty_keys },
 	{ KEYC_REPORT_DND, tty_keys_dnd },
 	{ KEYC_REPORT_KITTY_CLIPBOARD, tty_keys_kitty_clipboard },
-	{ KEYC_REPORT_PASTE_EVENTS, tty_keys_paste_events }
+	{ KEYC_REPORT_PASTE_EVENTS, tty_keys_paste_events },
+	{ KEYC_REPORT_POINTER_SHAPES, tty_keys_pointer_shapes }
 };
 
 /* A key tree entry. */
@@ -799,6 +802,7 @@ tty_keys_apply(struct tty *tty, const char *buf, struct tty_key_parse *kp)
 		tty->mouse_last_x = kp->m.x;
 		tty->mouse_last_y = kp->m.y;
 		tty->mouse_last_b = kp->m.b;
+		tty->mouse_hover = 1;
 		return;
 	}
 	for (i = 0; i < nitems(tty_keys_replies); i++) {
@@ -1687,6 +1691,54 @@ tty_keys_dnd(struct tty *tty, const char *buf, size_t len, size_t *size,
 		return (0);
 
 	dnd_tty_message(tty->client, buf + i, end - i - (terminator - 1));
+	return (0);
+}
+
+/*
+ * Handle OSC 22 pointer shape query replies. A reply of 1 to the query for
+ * the default shape means the terminal supports pointer shapes. Returns 0 for
+ * success, -1 for failure, 1 for partial.
+ */
+static int
+tty_keys_pointer_shapes(struct tty *tty, const char *buf, size_t len,
+    size_t *size, int apply)
+{
+	struct client		*c = tty->client;
+	static const char	 prefix[] = "\033]22;";
+	size_t			 end, i, n;
+
+	*size = 0;
+
+	/* First five bytes are always \033]22;. */
+	for (i = 0; i < (sizeof prefix) - 1; i++) {
+		if (i == len)
+			return (1);
+		if (buf[i] != prefix[i])
+			return (-1);
+	}
+
+	/* Find the terminator if any. */
+	for (end = i; end < len; end++) {
+		if (buf[end] == '\007')
+			break;
+		if (end > i && buf[end - 1] == '\033' && buf[end] == '\\')
+			break;
+	}
+	if (end == len)
+		return (1);
+	*size = end + 1;
+	if (!apply)
+		return (0);
+
+	n = (buf[end] == '\007') ? end - i : end - i - 1;
+	log_debug("%s: received pointer shapes reply %.*s", c->name, (int)n,
+	    buf + i);
+	if (n != 1 || buf[i] != '1')
+		return (0);
+	if (~tty->term->flags & TERM_POINTERSHAPES) {
+		tty_parse_client_features(c, "pointershapes", ",");
+		tty_update_features(tty);
+	}
 	return (0);
 }
 

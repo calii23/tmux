@@ -331,6 +331,9 @@ typedef unsigned long long key_code;
 /* Size of kitty keyboard flags stack. */
 #define KITTY_KEYS_STACK 16
 
+/* Size of pointer shape stack (OSC 22). */
+#define POINTER_SHAPES_STACK 16
+
 /*
  * Maximum length of a kitty keyboard protocol key sequence, and so of the
  * associated text codepoints it can hold: each is at least two digits and a
@@ -481,6 +484,7 @@ enum {
 	KEYC_REPORT_DND,
 	KEYC_REPORT_KITTY_CLIPBOARD,
 	KEYC_REPORT_PASTE_EVENTS,
+	KEYC_REPORT_POINTER_SHAPES,
 
 	/* Mouse state. */
 	KEYC_MOUSE, /* unclassified mouse event */
@@ -770,6 +774,7 @@ enum tty_code_code {
 #define MODE_THEME_UPDATES 0x80000
 #define MODE_SYNC 0x100000
 #define MODE_PASTE_EVENTS 0x200000
+#define MODE_MOUSE_SGR_PIXELS 0x400000
 
 #define ALL_MODES 0xffffff
 #define ALL_MOUSE_MODES (MODE_MOUSE_STANDARD|MODE_MOUSE_BUTTON|MODE_MOUSE_ALL)
@@ -1236,6 +1241,10 @@ struct screen {
 	/* Kitty keyboard flags, for main and alternate screens. */
 	u_int				 kitty_keys[2][KITTY_KEYS_STACK];
 	u_int				 kitty_keys_top[2];
+
+	/* Pointer shapes (OSC 22), for main and alternate screens. */
+	char				*pointer_shapes[2][POINTER_SHAPES_STACK];
+	u_int				 pointer_shapes_size[2];
 };
 
 /* Screen write context. */
@@ -1902,6 +1911,7 @@ struct tty_term {
 #define TERM_DND 0x1000
 #define TERM_KITTYGRAPHICS 0x2000
 #define TERM_KITTYCLIPBOARD 0x4000
+#define TERM_POINTERSHAPES 0x8000
 	int		 flags;
 
 	LIST_ENTRY(tty_term) entry;
@@ -1946,6 +1956,7 @@ struct tty {
 
 	int		 mode;
 	u_int		 kitty_keys;
+	char		*pointer_shape;
 	int              fg;
 	int              bg;
 
@@ -2003,6 +2014,7 @@ struct tty {
 	int		 mouse_scrolling_flag;
 	int		 mouse_slider_mpos;
 	int              mouse_last_pane;
+	int		 mouse_hover;
 	void		(*mouse_drag_update)(struct client *,
 			    struct mouse_event *);
 	void		(*mouse_drag_release)(struct client *,
@@ -3135,6 +3147,7 @@ void	tty_default_attributes(struct tty *, u_int,
 	    const struct tty_style_ctx *);
 void	tty_update_mode(struct tty *, int, struct screen *);
 void	tty_update_kitty_keys(struct tty *, u_int);
+void	tty_update_pointer_shape(struct tty *, const char *);
 const struct grid_cell *tty_check_codeset(struct tty *,
 	    const struct grid_cell *);
 void	tty_sync_start(struct tty *);
@@ -3621,7 +3634,7 @@ int	 input_key(struct screen *, struct bufferevent *, key_code,
 int	 input_key_is_passive(const struct key_extra *);
 key_code input_key_kitty_to_key(char, u_int);
 int	 input_key_get_mouse(struct screen *, struct mouse_event *, u_int,
-	     u_int, const char **, size_t *);
+	     u_int, u_int, u_int, const char **, size_t *);
 
 /* colour.c */
 int	 colour_find_rgb(u_char, u_char, u_char);
@@ -3881,6 +3894,11 @@ void	 screen_kitty_keys_reset(struct screen *, int);
 void	 screen_kitty_keys_push(struct screen *, u_int);
 void	 screen_kitty_keys_pop(struct screen *, u_int);
 void	 screen_kitty_keys_set(struct screen *, u_int, u_int);
+const char *screen_pointer_shape(struct screen *);
+void	 screen_pointer_shapes_reset(struct screen *, int);
+void	 screen_pointer_shapes_push(struct screen *, const char *);
+void	 screen_pointer_shapes_pop(struct screen *);
+void	 screen_pointer_shapes_set(struct screen *, const char *);
 const char *screen_mode_to_string(int);
 const char *screen_print(struct screen *, int);
 

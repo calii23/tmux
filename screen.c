@@ -103,6 +103,9 @@ screen_init(struct screen *s, u_int sx, u_int sy, u_int hlimit)
 	s->graphics = NULL;
 	s->saved_graphics = NULL;
 
+	s->pointer_shapes_size[0] = 0;
+	s->pointer_shapes_size[1] = 0;
+
 	screen_reinit(s, 1);
 }
 
@@ -125,6 +128,8 @@ screen_reinit(struct screen *s, int check)
 		screen_alternate_off(s, NULL, 0);
 	screen_kitty_keys_reset(s, 0);
 	screen_kitty_keys_reset(s, 1);
+	screen_pointer_shapes_reset(s, 0);
+	screen_pointer_shapes_reset(s, 1);
 	s->saved_cx = UINT_MAX;
 	s->saved_cy = UINT_MAX;
 
@@ -182,6 +187,9 @@ screen_free(struct screen *s)
 
 	graphics_free(s->graphics);
 	graphics_free(s->saved_graphics);
+
+	screen_pointer_shapes_reset(s, 0);
+	screen_pointer_shapes_reset(s, 1);
 
 #ifdef ENABLE_SIXEL
 	/*
@@ -881,6 +889,77 @@ screen_kitty_keys_set(struct screen *s, u_int flags, u_int mode)
 	}
 }
 
+/*
+ * Get the current pointer shape or NULL. The main and alternate screens each
+ * have their own stack, the top entry is the current shape and may be unset.
+ */
+const char *
+screen_pointer_shape(struct screen *s)
+{
+	int	alt = SCREEN_IS_ALTERNATE(s);
+
+	if (s->pointer_shapes_size[alt] == 0)
+		return (NULL);
+	return (s->pointer_shapes[alt][s->pointer_shapes_size[alt] - 1]);
+}
+
+/* Empty pointer shape stack for main or alternate screen. */
+void
+screen_pointer_shapes_reset(struct screen *s, int alt)
+{
+	u_int	i;
+
+	for (i = 0; i < s->pointer_shapes_size[alt]; i++)
+		free(s->pointer_shapes[alt][i]);
+	s->pointer_shapes_size[alt] = 0;
+}
+
+/*
+ * Push a pointer shape, NULL for unset. If the stack is full, drop the oldest
+ * entry.
+ */
+void
+screen_pointer_shapes_push(struct screen *s, const char *name)
+{
+	int	 alt = SCREEN_IS_ALTERNATE(s);
+	char	**stack = s->pointer_shapes[alt];
+	u_int	*size = &s->pointer_shapes_size[alt];
+
+	if (*size == POINTER_SHAPES_STACK) {
+		free(stack[0]);
+		memmove(stack, stack + 1, (POINTER_SHAPES_STACK - 1) *
+		    sizeof *stack);
+		(*size)--;
+	}
+	stack[(*size)++] = (name == NULL) ? NULL : xstrdup(name);
+}
+
+/* Pop a pointer shape. */
+void
+screen_pointer_shapes_pop(struct screen *s)
+{
+	int	 alt = SCREEN_IS_ALTERNATE(s);
+	u_int	*size = &s->pointer_shapes_size[alt];
+
+	if (*size != 0)
+		free(s->pointer_shapes[alt][--(*size)]);
+}
+
+/* Replace the current pointer shape, or push it if there is none. */
+void
+screen_pointer_shapes_set(struct screen *s, const char *name)
+{
+	int	 alt = SCREEN_IS_ALTERNATE(s);
+	u_int	 size = s->pointer_shapes_size[alt];
+
+	if (size == 0) {
+		screen_pointer_shapes_push(s, name);
+		return;
+	}
+	free(s->pointer_shapes[alt][size - 1]);
+	s->pointer_shapes[alt][size - 1] = (name == NULL) ? NULL : xstrdup(name);
+}
+
 /* Get mode as a string. */
 const char *
 screen_mode_to_string(int mode)
@@ -917,6 +996,8 @@ screen_mode_to_string(int mode)
 		strlcat(tmp, "MOUSE_UTF8,", sizeof tmp);
 	if (mode & MODE_MOUSE_SGR)
 		strlcat(tmp, "MOUSE_SGR,", sizeof tmp);
+	if (mode & MODE_MOUSE_SGR_PIXELS)
+		strlcat(tmp, "MOUSE_SGR_PIXELS,", sizeof tmp);
 	if (mode & MODE_BRACKETPASTE)
 		strlcat(tmp, "BRACKETPASTE,", sizeof tmp);
 	if (mode & MODE_FOCUSON)
