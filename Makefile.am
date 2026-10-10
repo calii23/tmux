@@ -93,6 +93,7 @@ dist_tmux_SOURCES = \
 	attributes.c \
 	cfg.c \
 	client.c \
+	clipboard.c \
 	cmd-attach-session.c \
 	cmd-bind-key.c \
 	cmd-break-pane.c \

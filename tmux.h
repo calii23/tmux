@@ -57,6 +57,8 @@ struct format_tree;
 struct hyperlinks_uri;
 struct hyperlinks;
 struct input_ctx;
+struct clipboard_client;
+struct clipboard_pane;
 struct dnd_client;
 struct dnd_pane;
 struct input_request;
@@ -477,6 +479,8 @@ enum {
 	KEYC_REPORT_WINSZ,
 	KEYC_REPORT_KITTY_KEYS,
 	KEYC_REPORT_DND,
+	KEYC_REPORT_KITTY_CLIPBOARD,
+	KEYC_REPORT_PASTE_EVENTS,
 
 	/* Mouse state. */
 	KEYC_MOUSE, /* unclassified mouse event */
@@ -765,6 +769,7 @@ enum tty_code_code {
 #define MODE_KEYS_EXTENDED_2 0x40000
 #define MODE_THEME_UPDATES 0x80000
 #define MODE_SYNC 0x100000
+#define MODE_PASTE_EVENTS 0x200000
 
 #define ALL_MODES 0xffffff
 #define ALL_MOUSE_MODES (MODE_MOUSE_STANDARD|MODE_MOUSE_BUTTON|MODE_MOUSE_ALL)
@@ -1525,6 +1530,7 @@ struct window_pane {
 
 	struct input_ctx *ictx;
 	struct dnd_pane	*dnd;
+	struct clipboard_pane *clipboard;
 
 	struct grid_cell cached_gc;
 	struct grid_cell cached_active_gc;
@@ -1895,6 +1901,7 @@ struct tty_term {
 #define TERM_KITTYKEYS 0x800
 #define TERM_DND 0x1000
 #define TERM_KITTYGRAPHICS 0x2000
+#define TERM_KITTYCLIPBOARD 0x4000
 	int		 flags;
 
 	LIST_ENTRY(tty_term) entry;
@@ -2417,6 +2424,7 @@ struct client {
 
 	struct input_requests	 input_requests;
 	struct dnd_client	*dnd;
+	struct clipboard_client	*clipboard;
 
 #define CLIENT_TERMINAL 0x1
 #define CLIENT_LOGIN 0x2
@@ -4483,6 +4491,18 @@ void			 graphics_client_check(struct client *, int);
 void			 graphics_client_sync(struct client *);
 void			 graphics_client_stop(struct client *);
 void			 graphics_client_free(struct client *);
+
+/* clipboard.c */
+void			 clipboard_pane_message(struct window_pane *,
+			     const char *);
+void			 clipboard_pane_destroy(struct window_pane *);
+int			 clipboard_osc52_read(struct window_pane *, char,
+			     const char *, int);
+void			 clipboard_tty_message(struct client *, const char *,
+			     size_t);
+int			 clipboard_client_active(struct client *);
+void			 clipboard_client_stop(struct client *);
+void			 clipboard_client_free(struct client *);
 
 /* dnd.c */
 int			 dnd_parse(struct dnd_msg *, const char *);

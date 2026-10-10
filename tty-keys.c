@@ -85,6 +85,10 @@ static int	tty_keys_winsz(struct tty *, const char *, size_t, size_t *,
 		    int);
 static int	tty_keys_kitty_keys(struct tty *, const char *, size_t,
 		    size_t *, int);
+static int	tty_keys_kitty_clipboard(struct tty *, const char *, size_t,
+		    size_t *, int);
+static int	tty_keys_paste_events(struct tty *, const char *, size_t,
+		    size_t *, int);
 static int	tty_keys_dnd(struct tty *, const char *, size_t, size_t *,
 		    int);
 static int	tty_keys_next1(struct tty *, const char *, size_t,
@@ -104,7 +108,9 @@ static const struct {
 	{ KEYC_REPORT_PALETTE, tty_keys_palette },
 	{ KEYC_REPORT_WINSZ, tty_keys_winsz },
 	{ KEYC_REPORT_KITTY_KEYS, tty_keys_kitty_keys },
-	{ KEYC_REPORT_DND, tty_keys_dnd }
+	{ KEYC_REPORT_DND, tty_keys_dnd },
+	{ KEYC_REPORT_KITTY_CLIPBOARD, tty_keys_kitty_clipboard },
+	{ KEYC_REPORT_PASTE_EVENTS, tty_keys_paste_events }
 };
 
 /* A key tree entry. */
@@ -955,7 +961,8 @@ partial_key:
 	    tty->flags & (TTY_OSC52QUERY|TTY_WINSIZEQUERY) ||
 	    (tty->flags & TTY_ALL_REQUEST_FLAGS) != TTY_ALL_REQUEST_FLAGS ||
 	    !TAILQ_EMPTY(&c->input_requests) ||
-	    dnd_client_active(c)) {
+	    dnd_client_active(c) ||
+	    clipboard_client_active(c)) {
 		log_debug("%s: increasing delay (active query)", c->name);
 		if (delay < 500)
 			delay = 500;
@@ -1680,6 +1687,96 @@ tty_keys_dnd(struct tty *tty, const char *buf, size_t len, size_t *size,
 		return (0);
 
 	dnd_tty_message(tty->client, buf + i, end - i - (terminator - 1));
+	return (0);
+}
+
+/*
+ * Handle OSC 5522 clipboard messages. Returns 0 for success, -1 for failure,
+ * 1 for partial.
+ */
+static int
+tty_keys_kitty_clipboard(struct tty *tty, const char *buf, size_t len,
+    size_t *size, int apply)
+{
+	static const char	 prefix[] = "\033]5522;";
+	size_t			 end, i, terminator = 0;
+
+	*size = 0;
+
+	/* First seven bytes are always \033]5522;. */
+	for (i = 0; i < (sizeof prefix) - 1; i++) {
+		if (i == len)
+			return (1);
+		if (buf[i] != prefix[i])
+			return (-1);
+	}
+
+	/* Find the terminator if any. */
+	for (end = i; end < len; end++) {
+		if (buf[end] == '\007') {
+			terminator = 1;
+			break;
+		}
+		if (end > i && buf[end - 1] == '\033' && buf[end] == '\\') {
+			terminator = 2;
+			break;
+		}
+	}
+	if (end == len)
+		return (1);
+	*size = end + 1;
+	if (!apply)
+		return (0);
+
+	clipboard_tty_message(tty->client, buf + i, end - i - (terminator - 1));
+	return (0);
+}
+
+/*
+ * Handle the reply to the clipboard paste events mode query. Returns 0 for
+ * success, -1 for failure, 1 for partial.
+ */
+static int
+tty_keys_paste_events(struct tty *tty, const char *buf, size_t len,
+    size_t *size, int apply)
+{
+	struct client		*c = tty->client;
+	static const char	 prefix[] = "\033[?5522;";
+	size_t			 i;
+	int			 status;
+
+	*size = 0;
+
+	/* The response is always \033[?5522;Ps$y. */
+	for (i = 0; i < (sizeof prefix) - 1; i++) {
+		if (i == len)
+			return (1);
+		if (buf[i] != prefix[i])
+			return (-1);
+	}
+	if (i == len)
+		return (1);
+	if (buf[i] < '0' || buf[i] > '4')
+		return (-1);
+	status = buf[i++] - '0';
+	if (i == len)
+		return (1);
+	if (buf[i++] != '$')
+		return (-1);
+	if (i == len)
+		return (1);
+	if (buf[i++] != 'y')
+		return (-1);
+	*size = i;
+	if (!apply)
+		return (0);
+
+	log_debug("%s: received DECRPM %.*s", c->name, (int)*size, buf);
+	if (status != 0 && status != 4 &&
+	    (~tty->term->flags & TERM_KITTYCLIPBOARD)) {
+		tty_parse_client_features(c, "kittyclipboard", ",");
+		tty_update_features(tty);
+	}
 	return (0);
 }
 

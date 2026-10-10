@@ -5086,6 +5086,17 @@ is the same as
 .Cm request
 but also creates a paste buffer.
 .Pp
+If the most recently used client has the
+.Ic kittyclipboard
+feature, reads (with OSC 52 or the kitty clipboard protocol, OSC 5522) are
+always sent to it unless this option is
+.Cm off ,
+since the terminal asks for permission itself;
+.Cm both
+also creates a paste buffer.
+The other choices only apply without such a client.
+A read using the password from a paste event is always sent to the terminal.
+.Pp
 See also the
 .Ic set\-clipboard
 option.
@@ -5161,6 +5172,17 @@ If
 .Nm
 will neither accept the clipboard escape sequence nor attempt to set the
 clipboard.
+.Pp
+Writes with the kitty clipboard protocol (OSC 5522) are only accepted if
+.Ic set\-clipboard
+is
+.Cm on .
+Any plain text creates a paste buffer and the write is sent to terminals with
+the
+.Ic kittyclipboard
+feature, or the plain text to other terminals.
+The result of the write is the reply from the terminal reads are sent to, if
+any.
 .Pp
 Note that this feature needs to be enabled in
 .Xr xterm 1
@@ -5239,6 +5261,18 @@ Ignore function keys from
 and use the
 .Nm
 internal set only.
+.It kittyclipboard
+Supports the kitty clipboard protocol (OSC 5522).
+This is detected automatically if the terminal answers a query for the
+protocol's mode when
+.Nm
+starts.
+With this feature, writes to the clipboard from programs in panes are sent to
+the terminal with all their data types, reads requested from the terminal
+(see
+.Ic get\-clipboard )
+are sent with this protocol and paste events from the terminal go to the
+active pane if it has asked for them.
 .It kittygraphics
 Supports the kitty graphics protocol, including unicode placeholders.
 .Nm

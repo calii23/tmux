@@ -424,6 +424,8 @@ tty_send_requests(struct tty *tty)
 			tty_puts(tty, "\033]72;t=q\033\\");
 		else
 			dnd_client_start(tty->client);
+		if (~tty->term->flags & TERM_KITTYCLIPBOARD)
+			tty_puts(tty, "\033[?5522$p");
 		tty_puts(tty, "\033]10;?\033\\\033]11;?\033\\");
 		tty->flags |= (TTY_WAITBG|TTY_WAITFG);
 	} else
@@ -493,6 +495,10 @@ tty_stop_tty(struct tty *tty)
 	tty_raw(tty, tty_term_string(tty->term, TTYC_RMKX));
 	dnd_client_stop(c);
 	graphics_client_stop(c);
+	clipboard_client_stop(c);
+	if ((tty->mode & MODE_PASTE_EVENTS) &&
+	    (tty->term->flags & TERM_KITTYCLIPBOARD))
+		tty_raw(tty, "\033[?5522l");
 	if (options_get_number(global_options, "clear-on-attach"))
 		tty_raw(tty, tty_term_string(tty->term, TTYC_CLEAR));
 	if (tty->cstyle != SCREEN_CURSOR_DEFAULT) {
@@ -913,6 +919,8 @@ tty_update_mode(struct tty *tty, int mode, struct screen *s)
 
 	if (tty->flags & TTY_NOCURSOR)
 		mode &= ~MODE_CURSOR;
+	if (~term->flags & TERM_KITTYCLIPBOARD)
+		mode &= ~MODE_PASTE_EVENTS;
 
 	if (tty_update_cursor(tty, mode, s) & MODE_CURSOR_BLINKING)
 		mode |= MODE_CURSOR_BLINKING;
@@ -942,6 +950,12 @@ tty_update_mode(struct tty *tty, int mode, struct screen *s)
 			tty_puts(tty, "\033[?1000h\033[?1002h");
 		else if (mode & MODE_MOUSE_STANDARD)
 			tty_puts(tty, "\033[?1000h");
+	}
+	if (changed & MODE_PASTE_EVENTS) {
+		if (mode & MODE_PASTE_EVENTS)
+			tty_puts(tty, "\033[?5522h");
+		else
+			tty_puts(tty, "\033[?5522l");
 	}
 	tty->mode = mode;
 }
