@@ -319,6 +319,10 @@ screen_write_initctx(struct screen_write_ctx *ctx, struct tty_ctx *ttyctx,
 	memcpy(&ttyctx->defaults, &grid_default_cell, sizeof ttyctx->defaults);
 	ttyctx->style_ctx.defaults = &ttyctx->defaults;
 	ttyctx->style_ctx.hyperlinks = ctx->s->hyperlinks;
+	if (ctx->s->graphics != NULL || ctx->wp == NULL)
+		ttyctx->style_ctx.graphics = ctx->s->graphics;
+	else
+		ttyctx->style_ctx.graphics = ctx->wp->base.graphics;
 
 	if (ctx->init_ctx_cb != NULL) {
 		ctx->init_ctx_cb(ctx, ttyctx);
@@ -784,6 +788,7 @@ screen_write_fast_copy(struct screen_write_ctx *ctx, struct screen *src,
 			}
 			if (xx + gc.data.width > px + nx)
 				break;
+			graphics_copy_cell(src, s, xx, yy, &gc);
 			grid_view_set_cell(s->grid, s->cx, s->cy, &gc);
 
 			if (!window_position_is_visible(r, xoff + s->cx))
@@ -2336,6 +2341,8 @@ screen_write_clearscreen(struct screen_write_ctx *ctx, u_int bg)
 	struct visible_ranges	*r;
 	struct visible_range	*ri;
 
+	graphics_clear(s, ctx->wp, 0);
+
 #ifdef ENABLE_SIXEL
 	if (image_free_all(s) && ctx->wp != NULL)
 		ctx->wp->flags |= PANE_REDRAW;
@@ -2393,6 +2400,7 @@ screen_write_clearscreen(struct screen_write_ctx *ctx, u_int bg)
 void
 screen_write_clearhistory(struct screen_write_ctx *ctx)
 {
+	graphics_clear(ctx->s, ctx->wp, 1);
 	grid_clear_history(ctx->s->grid);
 }
 

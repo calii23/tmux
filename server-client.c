@@ -414,6 +414,7 @@ server_client_lost(struct client *c)
 	status_free(c);
 	input_cancel_requests(c);
 	dnd_client_free(c);
+	graphics_client_free(c);
 
 	free(c->title);
 	free(c->path);
@@ -1930,12 +1931,16 @@ server_client_loop(void)
 		}
 	}
 
+	/* Redraw placeholder cells held back while drawing output. */
+	graphics_flush_held();
+
 	/* Check clients. */
 	TAILQ_FOREACH(c, &clients, entry) {
 		server_client_check_exit(c, 0);
 		if (c->session != NULL && c->session->curw != NULL) {
 			server_client_check_modes(c);
 			server_client_check_redraw(c);
+			graphics_client_sync(c);
 			server_client_reset_state(c);
 		}
 	}

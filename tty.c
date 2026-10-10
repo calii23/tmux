@@ -85,7 +85,7 @@ static void	tty_write_one(void (*)(struct tty *, const struct tty_ctx *),
 #define TTY_REQUEST_LIMIT 30
 
 static struct tty_style_ctx tty_default_style_ctx = {
-	&grid_default_cell, NULL, 0, NULL, 0
+	&grid_default_cell, NULL, 0, NULL, NULL, 0
 };
 
 void
@@ -492,6 +492,7 @@ tty_stop_tty(struct tty *tty)
 	tty_raw(tty, tty_term_string(tty->term, TTYC_SGR0));
 	tty_raw(tty, tty_term_string(tty->term, TTYC_RMKX));
 	dnd_client_stop(c);
+	graphics_client_stop(c);
 	if (options_get_number(global_options, "clear-on-attach"))
 		tty_raw(tty, tty_term_string(tty->term, TTYC_CLEAR));
 	if (tty->cstyle != SCREEN_CURSOR_DEFAULT) {
@@ -1164,6 +1165,8 @@ tty_redraw_region(struct tty *tty, const struct tty_ctx *ctx)
 	struct client		*c = tty->client;
 	u_int			 i;
 
+	graphics_client_check(c, 0);
+
 	/*
 	 * If region is large, schedule a redraw. In most cases this is likely
 	 * to be followed by some more scrolling.
@@ -1440,6 +1443,7 @@ tty_clear_area(struct tty *tty, const struct tty_ctx *ctx, u_int py,
 			tty_region(tty, py, py + ny - 1);
 			tty_margin_off(tty);
 			tty_putcode_i(tty, TTYC_INDN, ny);
+			graphics_client_check(c, 1);
 			return;
 		}
 
@@ -1455,6 +1459,7 @@ tty_clear_area(struct tty *tty, const struct tty_ctx *ctx, u_int py,
 			tty_region(tty, py, py + ny - 1);
 			tty_margin(tty, px, px + nx - 1);
 			tty_putcode_i(tty, TTYC_INDN, ny);
+			graphics_client_check(c, 1);
 			return;
 		}
 	}
@@ -1748,6 +1753,7 @@ tty_cmd_insertline(struct tty *tty, const struct tty_ctx *ctx)
 
 	tty_emulate_repeat(tty, TTYC_IL, TTYC_IL1, ctx->n);
 	tty->cx = tty->cy = UINT_MAX;
+	graphics_client_check(tty->client, 1);
 }
 
 void
@@ -1773,6 +1779,7 @@ tty_cmd_deleteline(struct tty *tty, const struct tty_ctx *ctx)
 
 	tty_emulate_repeat(tty, TTYC_DL, TTYC_DL1, ctx->n);
 	tty->cx = tty->cy = UINT_MAX;
+	graphics_client_check(tty->client, 1);
 }
 
 void
@@ -1830,6 +1837,7 @@ tty_cmd_reverseindex(struct tty *tty, const struct tty_ctx *ctx)
 		tty_putcode(tty, TTYC_RI);
 	else
 		tty_putcode_i(tty, TTYC_RIN, 1);
+	graphics_client_check(tty->client, 1);
 }
 
 void
@@ -1870,6 +1878,7 @@ tty_cmd_linefeed(struct tty *tty, const struct tty_ctx *ctx)
 		tty_cursor_pane(tty, ctx, ctx->ocx, ctx->ocy);
 
 	tty_putc(tty, '\n');
+	graphics_client_check(tty->client, 1);
 }
 
 void
@@ -1907,6 +1916,7 @@ tty_cmd_scrollup(struct tty *tty, const struct tty_ctx *ctx)
 			tty_cursor(tty, 0, tty->cy);
 		tty_putcode_i(tty, TTYC_INDN, ctx->n);
 	}
+	graphics_client_check(tty->client, 1);
 }
 
 void
@@ -1939,6 +1949,7 @@ tty_cmd_scrolldown(struct tty *tty, const struct tty_ctx *ctx)
 		for (i = 0; i < ctx->n; i++)
 			tty_putcode(tty, TTYC_RI);
 	}
+	graphics_client_check(tty->client, 1);
 }
 
 void
@@ -2032,6 +2043,9 @@ tty_cmd_alignmenttest(struct tty *tty, const struct tty_ctx *ctx)
 void
 tty_cmd_cell(struct tty *tty, const struct tty_ctx *ctx)
 {
+	const struct grid_cell	*gcp;
+	struct grid_cell	 gc;
+
 	if (!tty_is_visible(tty, ctx, ctx->ocx, ctx->ocy, 1, 1))
 		return;
 
@@ -2045,7 +2059,10 @@ tty_cmd_cell(struct tty *tty, const struct tty_ctx *ctx)
 		tty_invalidate(tty);
 	tty_cursor_pane_unless_wrap(tty, ctx, ctx->ocx, ctx->ocy);
 
-	tty_cell(tty, ctx->cell, &ctx->style_ctx);
+	gcp = graphics_draw_cell(tty, &ctx->style_ctx, ctx->s->grid, ctx->ocx,
+	    ctx->ocy, ctx->cell, &gc, 1);
+	if (gcp != NULL)
+		tty_cell(tty, gcp, &ctx->style_ctx);
 
 	if (ctx->flags & TTY_CTX_CELL_INVALIDATE)
 		tty_invalidate(tty);

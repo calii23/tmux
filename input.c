@@ -184,6 +184,8 @@ static void	input_enter_osc(struct input_ctx *);
 static void	input_exit_osc(struct input_ctx *);
 static void	input_enter_apc(struct input_ctx *);
 static void	input_exit_apc(struct input_ctx *);
+static void	input_dcs_passthrough(struct input_ctx *, u_char *, size_t,
+		    long long);
 static void	input_enter_rename(struct input_ctx *);
 static void	input_exit_rename(struct input_ctx *);
 
@@ -2671,13 +2673,13 @@ input_dcs_dispatch(struct input_ctx *ictx)
 {
 	struct window_pane	*wp = ictx->wp;
 	struct options		*oo;
-	struct screen_write_ctx	*sctx = &ictx->ctx;
 	u_char			*buf = ictx->input_buf;
 	size_t			 len = ictx->input_len;
 	const char		 prefix[] = "tmux;";
 	const u_int		 prefixlen = (sizeof prefix) - 1;
 	long long		 allow_passthrough = 0;
 #ifdef ENABLE_SIXEL
+	struct screen_write_ctx	*sctx = &ictx->ctx;
 	struct window		*w;
 	struct sixel_image	*si;
 	int			 p2;
@@ -2720,17 +2722,53 @@ input_dcs_dispatch(struct input_ctx *ictx)
 		 */
 	}
 
-	allow_passthrough = options_get_number(oo, "allow-passthrough");
-	if (!allow_passthrough)
-		return (0);
-	log_debug("%s: \"%s\"", __func__, buf);
-
 	if (len >= prefixlen && strncmp(buf, prefix, prefixlen) == 0) {
-		screen_write_rawstring(sctx, buf + prefixlen, len - prefixlen,
-		    allow_passthrough == 2);
+		allow_passthrough = options_get_number(oo, "allow-passthrough");
+		log_debug("%s: \"%s\"", __func__, buf);
+		input_dcs_passthrough(ictx, buf + prefixlen, len - prefixlen,
+		    allow_passthrough);
 	}
 
 	return (0);
+}
+
+/*
+ * Handle a passthrough string. Graphics commands in it are handled by tmux
+ * (even if passthrough is off) and the rest is passed through if allowed.
+ */
+static void
+input_dcs_passthrough(struct input_ctx *ictx, u_char *buf, size_t len,
+    long long allow)
+{
+	struct screen_write_ctx	*sctx = &ictx->ctx;
+	u_char			*end = buf + len, *start = buf, *next;
+	char			*reply;
+
+	while (end - buf >= 3) {
+		if (memcmp(buf, "\033_G", 3) != 0) {
+			buf++;
+			continue;
+		}
+		if (allow && buf != start)
+			screen_write_rawstring(sctx, start, buf - start,
+			    allow == 2);
+
+		buf += 2;
+		for (next = buf; next + 1 < end; next++) {
+			if (next[0] == '\033' && next[1] == '\\')
+				break;
+		}
+		if (next + 1 >= end)
+			next = end;
+		reply = graphics_command(sctx, buf, next - buf);
+		if (reply != NULL) {
+			input_reply(ictx, 1, "%s", reply);
+			free(reply);
+		}
+		buf = start = (next == end) ? end : next + 2;
+	}
+	if (allow && end != start)
+		screen_write_rawstring(sctx, start, end - start, allow == 2);
 }
 
 /* OSC string started. */
@@ -2851,10 +2889,22 @@ input_exit_apc(struct input_ctx *ictx)
 {
 	struct screen_write_ctx	*sctx = &ictx->ctx;
 	struct window_pane	*wp = ictx->wp;
+	char			*reply;
 
 	if (ictx->flags & INPUT_DISCARD)
 		return;
 	log_debug("%s: \"%s\"", __func__, ictx->input_buf);
+
+	/* Kitty graphics commands start with G and never set the title. */
+	if (ictx->input_len != 0 && ictx->input_buf[0] == 'G') {
+		reply = graphics_command(sctx, ictx->input_buf,
+		    ictx->input_len);
+		if (reply != NULL) {
+			input_reply(ictx, 1, "%s", reply);
+			free(reply);
+		}
+		return;
+	}
 
 	if (wp != NULL &&
 	    options_get_number(wp->options, "allow-set-title") &&

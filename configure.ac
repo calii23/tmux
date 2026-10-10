@@ -240,6 +240,10 @@ AC_RUN_IFELSE([AC_LANG_PROGRAM(
 
 # Look for clock_gettime. Must come before event_init.
 AC_SEARCH_LIBS(clock_gettime, rt)
+AC_SEARCH_LIBS(shm_open, rt)
+
+# zlib is optional, used to find the size of compressed images.
+AC_CHECK_HEADER(zlib.h, AC_SEARCH_LIBS(inflate, z, AC_DEFINE(HAVE_ZLIB)))
 
 # Always use our getopt because 1) glibc's doesn't enforce argument order 2)
 # musl does not set optarg to NULL for flags without arguments (although it is
