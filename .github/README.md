@@ -21,6 +21,8 @@ Currently supported protocols in this fork:
   clipboard reads and writes with fallback to tmux buffer if your emulator doesn't support it
 - [Pointer shapes](https://sw.kovidgoyal.net/kitty/pointer-shapes/) (OSC 22):
   mouse pointer shape of the pane under the mouse
+- Desktop notifications (OSC 99):
+  send push notifications from the terminal (also support legacy OSC 9 messages)
 
 ## Welcome to tmux!
 

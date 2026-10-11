@@ -418,6 +418,7 @@ server_client_lost(struct client *c)
 	input_cancel_requests(c);
 	dnd_client_free(c);
 	clipboard_client_free(c);
+	notify_client_free(c);
 	graphics_client_free(c);
 
 	free(c->title);

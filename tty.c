@@ -428,6 +428,7 @@ tty_send_requests(struct tty *tty)
 			tty_puts(tty, "\033[?5522$p");
 		if (~tty->term->flags & TERM_POINTERSHAPES)
 			tty_puts(tty, "\033]22;?default\033\\");
+		notify_client_start(tty->client);
 		tty_puts(tty, "\033]10;?\033\\\033]11;?\033\\");
 		tty->flags |= (TTY_WAITBG|TTY_WAITFG);
 	} else
@@ -498,6 +499,7 @@ tty_stop_tty(struct tty *tty)
 	dnd_client_stop(c);
 	graphics_client_stop(c);
 	clipboard_client_stop(c);
+	notify_client_stop(c);
 	if ((tty->mode & MODE_PASTE_EVENTS) &&
 	    (tty->term->flags & TERM_KITTYCLIPBOARD))
 		tty_raw(tty, "\033[?5522l");

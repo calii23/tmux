@@ -91,6 +91,8 @@ static int	tty_keys_paste_events(struct tty *, const char *, size_t,
 		    size_t *, int);
 static int	tty_keys_pointer_shapes(struct tty *, const char *, size_t,
 		    size_t *, int);
+static int	tty_keys_kitty_notify(struct tty *, const char *, size_t,
+		    size_t *, int);
 static int	tty_keys_dnd(struct tty *, const char *, size_t, size_t *,
 		    int);
 static int	tty_keys_next1(struct tty *, const char *, size_t,
@@ -113,7 +115,8 @@ static const struct {
 	{ KEYC_REPORT_DND, tty_keys_dnd },
 	{ KEYC_REPORT_KITTY_CLIPBOARD, tty_keys_kitty_clipboard },
 	{ KEYC_REPORT_PASTE_EVENTS, tty_keys_paste_events },
-	{ KEYC_REPORT_POINTER_SHAPES, tty_keys_pointer_shapes }
+	{ KEYC_REPORT_POINTER_SHAPES, tty_keys_pointer_shapes },
+	{ KEYC_REPORT_KITTY_NOTIFY, tty_keys_kitty_notify }
 };
 
 /* A key tree entry. */
@@ -966,7 +969,8 @@ partial_key:
 	    (tty->flags & TTY_ALL_REQUEST_FLAGS) != TTY_ALL_REQUEST_FLAGS ||
 	    !TAILQ_EMPTY(&c->input_requests) ||
 	    dnd_client_active(c) ||
-	    clipboard_client_active(c)) {
+	    clipboard_client_active(c) ||
+	    notify_client_active(c)) {
 		log_debug("%s: increasing delay (active query)", c->name);
 		if (delay < 500)
 			delay = 500;
@@ -1781,6 +1785,48 @@ tty_keys_kitty_clipboard(struct tty *tty, const char *buf, size_t len,
 		return (0);
 
 	clipboard_tty_message(tty->client, buf + i, end - i - (terminator - 1));
+	return (0);
+}
+
+/*
+ * Handle OSC 99 notification messages. Returns 0 for success, -1 for failure,
+ * 1 for partial.
+ */
+static int
+tty_keys_kitty_notify(struct tty *tty, const char *buf, size_t len,
+    size_t *size, int apply)
+{
+	static const char	 prefix[] = "\033]99;";
+	size_t			 end, i, terminator = 0;
+
+	*size = 0;
+
+	/* First five bytes are always \033]99;. */
+	for (i = 0; i < (sizeof prefix) - 1; i++) {
+		if (i == len)
+			return (1);
+		if (buf[i] != prefix[i])
+			return (-1);
+	}
+
+	/* Find the terminator if any. */
+	for (end = i; end < len; end++) {
+		if (buf[end] == '\007') {
+			terminator = 1;
+			break;
+		}
+		if (end > i && buf[end - 1] == '\033' && buf[end] == '\\') {
+			terminator = 2;
+			break;
+		}
+	}
+	if (end == len)
+		return (1);
+	*size = end + 1;
+	if (!apply)
+		return (0);
+
+	notify_tty_message(tty->client, buf + i, end - i - (terminator - 1));
 	return (0);
 }
 

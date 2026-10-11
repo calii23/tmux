@@ -429,6 +429,13 @@ static const struct tty_feature tty_feature_pointershapes = {
 	TERM_POINTERSHAPES
 };
 
+/* Terminal supports the kitty desktop notifications protocol (OSC 99). */
+static const struct tty_feature tty_feature_kittynotify = {
+	"kittynotify",
+	NULL,
+	TERM_KITTYNOTIFY
+};
+
 /* Terminal supports UTF-8. */
 static const struct tty_feature tty_feature_utf8 = {
 	"utf8",
@@ -452,6 +459,7 @@ static const struct tty_feature *const tty_features[] = {
 	&tty_feature_kittyclipboard,
 	&tty_feature_kittygraphics,
 	&tty_feature_kittykeys,
+	&tty_feature_kittynotify,
 	&tty_feature_margins,
 	&tty_feature_mouse,
 	&tty_feature_osc7,

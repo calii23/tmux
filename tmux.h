@@ -62,6 +62,7 @@ struct clipboard_pane;
 struct dnd_client;
 struct dnd_pane;
 struct input_request;
+struct notify_client;
 struct input_requests;
 struct job;
 struct json_node;
@@ -485,6 +486,7 @@ enum {
 	KEYC_REPORT_KITTY_CLIPBOARD,
 	KEYC_REPORT_PASTE_EVENTS,
 	KEYC_REPORT_POINTER_SHAPES,
+	KEYC_REPORT_KITTY_NOTIFY,
 
 	/* Mouse state. */
 	KEYC_MOUSE, /* unclassified mouse event */
@@ -1912,6 +1914,7 @@ struct tty_term {
 #define TERM_KITTYGRAPHICS 0x2000
 #define TERM_KITTYCLIPBOARD 0x4000
 #define TERM_POINTERSHAPES 0x8000
+#define TERM_KITTYNOTIFY 0x10000
 	int		 flags;
 
 	LIST_ENTRY(tty_term) entry;
@@ -2437,6 +2440,7 @@ struct client {
 	struct input_requests	 input_requests;
 	struct dnd_client	*dnd;
 	struct clipboard_client	*clipboard;
+	struct notify_client	*notify;
 
 #define CLIENT_TERMINAL 0x1
 #define CLIENT_LOGIN 0x2
@@ -4521,6 +4525,18 @@ void			 clipboard_tty_message(struct client *, const char *,
 int			 clipboard_client_active(struct client *);
 void			 clipboard_client_stop(struct client *);
 void			 clipboard_client_free(struct client *);
+
+/* notify.c */
+void			 notify_pane_message(struct window_pane *,
+			     const char *);
+void			 notify_pane_destroy(struct window_pane *);
+void			 notify_pane_text(struct window_pane *, const char *);
+void			 notify_tty_message(struct client *, const char *,
+			     size_t);
+void			 notify_client_start(struct client *);
+int			 notify_client_active(struct client *);
+void			 notify_client_stop(struct client *);
+void			 notify_client_free(struct client *);
 
 /* dnd.c */
 int			 dnd_parse(struct dnd_msg *, const char *);

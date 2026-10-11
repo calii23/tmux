@@ -5283,6 +5283,18 @@ itself; see
 Supports the kitty keyboard protocol.
 This is detected automatically if the terminal answers a query for the
 protocol flags.
+.It kittynotify
+Supports the kitty desktop notifications protocol (OSC 99).
+This is detected automatically if the terminal answers a query for the
+protocol's capabilities when
+.Nm
+starts.
+With this feature, notifications from programs in panes are sent to the most
+recently active client terminal attached to the window, as are legacy OSC 9
+notifications with only text.
+Clicking a notification selects the pane in that client unless the program
+asked otherwise, and activations, button presses and close events are passed
+back to the program if it asked for them.
 .It margins
 Supports DECSLRM margins.
 .It mouse

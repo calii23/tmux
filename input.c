@@ -2894,6 +2894,10 @@ input_exit_osc(struct input_ctx *ictx)
 		if (wp != NULL)
 			clipboard_pane_message(wp, p);
 		break;
+	case 99:
+		if (wp != NULL)
+			notify_pane_message(wp, p);
+		break;
 	default:
 		log_debug("%s: unknown '%u'", __func__, option);
 		break;
@@ -3366,7 +3370,16 @@ input_osc_9(struct input_ctx *ictx, const char *p)
 	enum progress_bar_state	 state;
 	int			 progress = 0;
 
-	if (*pb++ != '4')
+	/* Other numbered commands are ConEmu extensions, the rest is text. */
+	while (*pb >= '0' && *pb <= '9')
+		pb++;
+	if (pb == p || (*pb != ';' && *pb != '\0')) {
+		if (ictx->wp != NULL)
+			notify_pane_text(ictx->wp, p);
+		return;
+	}
+	pb = p;
+	if (*pb++ != '4' || (*pb != ';' && *pb != '\0'))
 		return;
 	if (*pb == '\0' || (*pb == ';' && pb[1] == '\0'))
 		return;
